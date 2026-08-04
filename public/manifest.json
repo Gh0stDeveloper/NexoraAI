@@ -1,0 +1,17 @@
+{
+  "name": "Nexora AI",
+  "short_name": "NexoraAI",
+  "description": "IA local entrenable con panel web, API propia y cliente Android.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#070A12",
+  "theme_color": "#10A37F",
+  "icons": [
+    {
+      "src": "/nexora.svg",
+      "sizes": "256x256",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
