@@ -5,15 +5,9 @@ on:
     branches:
       - main
       - "agent/**"
-    paths:
-      - "apps/android/**"
-      - ".github/workflows/android-ci.yml"
   pull_request:
     branches:
       - main
-    paths:
-      - "apps/android/**"
-      - ".github/workflows/android-ci.yml"
   workflow_dispatch:
 
 permissions:
