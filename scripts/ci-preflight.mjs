@@ -63,7 +63,17 @@ if (fs.existsSync(envExamplePath)) {
 const dockerComposePath = path.join(root, 'docker-compose.vps.yml');
 if (fs.existsSync(dockerComposePath)) {
   const compose = fs.readFileSync(dockerComposePath, 'utf8');
-  for (const token of ['nexora-ai', 'postgres', 'ollama', '.env.production']) {
+  const requiredComposeTokens = [
+    'services:',
+    'app:',
+    'postgres:',
+    'ollama:',
+    '.env.production',
+    '127.0.0.1:3000:3000',
+    '127.0.0.1:11434:11434',
+    'pgvector/pgvector:pg16'
+  ];
+  for (const token of requiredComposeTokens) {
     if (!compose.includes(token)) {
       errors.push(`docker-compose.vps.yml should reference: ${token}`);
     }
