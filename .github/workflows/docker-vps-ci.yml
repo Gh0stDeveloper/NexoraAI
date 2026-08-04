@@ -1,0 +1,11 @@
+name: Docker VPS CI
+on: {push: {branches: [main, "agent/**"]}, pull_request: {branches: [main]}, workflow_dispatch: {}}
+permissions: {contents: read}
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: find deploy/scripts -type f -name "*.sh" -print0 | xargs -0 -I{} bash -n {}
+      - run: docker compose -f docker-compose.vps.yml config
+      - run: docker build -t nexora-ai:${{ github.sha }} .

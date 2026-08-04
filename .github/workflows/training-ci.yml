@@ -1,0 +1,12 @@
+name: Training Dataset CI
+on: {push: {branches: [main, "agent/**"], paths: ["training/**", ".github/workflows/training-ci.yml"]}, pull_request: {branches: [main], paths: ["training/**", ".github/workflows/training-ci.yml"]}, workflow_dispatch: {}}
+permissions: {contents: read}
+jobs:
+  dataset:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: python -m py_compile training/scripts/validate_dataset.py
+      - run: python training/scripts/validate_dataset.py training/datasets/nexora-devsec-sample.jsonl

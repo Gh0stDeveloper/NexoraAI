@@ -1,0 +1,9 @@
+node_modules
+.next
+.env
+.env.local
+*.log
+apps/android/GhostNexoraAndroid/.gradle
+apps/android/GhostNexoraAndroid/build
+apps/android/GhostNexoraAndroid/app/build
+training/output

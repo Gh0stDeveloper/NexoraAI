@@ -1,0 +1,5 @@
+services:
+  node-exporter:
+    image: prom/node-exporter:latest
+    restart: unless-stopped
+    ports: ["127.0.0.1:9100:9100"]

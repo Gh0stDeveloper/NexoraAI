@@ -1,0 +1,2 @@
+import Link from "next/link";
+export default function Page(){return <main className="shell"><section className="card"><p className="muted">VPS Owner Edition</p><h1>Nexora AI</h1><p>IA local entrenable para programación, ciberseguridad defensiva, datos, Android y DevOps.</p><p><Link className="btn" href="/docs">Abrir documentación</Link></p></section><section className="card"><h2>Producción</h2><p className="muted">Lista para Docker, Nginx, Ollama, PostgreSQL y app Android conectada a <code>api.nexoraia.com</code>.</p></section></main>}
