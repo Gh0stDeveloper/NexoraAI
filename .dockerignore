@@ -1,0 +1,7 @@
+node_modules
+.next
+.git
+.env*
+apps/android/GhostNexoraAndroid/.gradle
+apps/android/GhostNexoraAndroid/build
+apps/android/GhostNexoraAndroid/app/build

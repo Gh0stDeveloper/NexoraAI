@@ -1,0 +1,17 @@
+name: Web API CI
+on: {push: {branches: [main, "agent/**"]}, pull_request: {branches: [main]}, workflow_dispatch: {}}
+permissions: {contents: read}
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    env: {APP_ENV: ci, NEXT_PUBLIC_SITE_URL: http://localhost:3000, NEXT_PUBLIC_API_URL: http://localhost:3000, MOBILE_PRODUCTION_API_URL: https://api.nexoraia.com/, AI_PROVIDER: ollama}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm}
+      - run: npm install --no-audit --no-fund
+      - run: npm run validate:repo
+      - run: npm run dataset:validate
+      - run: npm run security:check
+      - run: npm run typecheck
+      - run: npm run build

@@ -1,0 +1,1 @@
+{"messages":[{"role":"system","content":"Eres Nexora AI."},{"role":"user","content":"Corrige un error Kotlin."},{"role":"assistant","content":"Analiza el log, ubica archivo, corrige importaciones y valida Gradle."}]}
