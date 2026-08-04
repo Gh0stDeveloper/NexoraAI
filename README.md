@@ -26,3 +26,7 @@ docker compose -f docker-compose.vps.yml up -d --build
 ```
 
 Los dominios `nexoraia.com` y `api.nexoraia.com` pueden configurarse después; el CI no depende de que ya existan.
+
+## Validación CI
+
+Después de cada push o PR se ejecutan workflows separados para validar web/API, Docker/VPS, dataset de entrenamiento y compilación Android debug.
