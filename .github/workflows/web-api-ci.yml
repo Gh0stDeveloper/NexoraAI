@@ -1,17 +1,52 @@
 name: Web API CI
-on: {push: {branches: [main, "agent/**"]}, pull_request: {branches: [main]}, workflow_dispatch: {}}
-permissions: {contents: read}
+
+on:
+  push:
+    branches:
+      - main
+      - "agent/**"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
   web:
+    name: Build and validate Next.js API
     runs-on: ubuntu-latest
-    env: {APP_ENV: ci, NEXT_PUBLIC_SITE_URL: http://localhost:3000, NEXT_PUBLIC_API_URL: http://localhost:3000, MOBILE_PRODUCTION_API_URL: https://api.nexoraia.com/, AI_PROVIDER: ollama}
+    env:
+      APP_ENV: ci
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+      MOBILE_PRODUCTION_API_URL: https://api.nexoraia.com/
+      AI_PROVIDER: ollama
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: {node-version: 22, cache: npm}
-      - run: npm install --no-audit --no-fund
-      - run: npm run validate:repo
-      - run: npm run dataset:validate
-      - run: npm run security:check
-      - run: npm run typecheck
-      - run: npm run build
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Validate repository structure
+        run: npm run validate:repo
+
+      - name: Validate training dataset
+        run: npm run dataset:validate
+
+      - name: Static security check
+        run: npm run security:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build production bundle
+        run: npm run build
