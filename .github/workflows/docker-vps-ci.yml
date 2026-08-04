@@ -21,8 +21,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Prepare production env for Compose validation
+        run: cp .env.vps.example .env.production
+
       - name: Validate shell scripts
         run: find deploy/scripts -type f -name "*.sh" -print0 | xargs -0 -I{} bash -n {}
+
+      - name: CI preflight
+        run: node scripts/ci-preflight.mjs
 
       - name: Validate Docker Compose VPS config
         run: docker compose -f docker-compose.vps.yml config
