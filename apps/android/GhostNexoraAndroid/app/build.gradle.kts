@@ -12,19 +12,26 @@ val releaseSigningEnabled = listOf(
     releaseKeystorePath,
     releaseKeystorePassword,
     releaseKeyAlias,
-    releaseKeyPassword
+    releaseKeyPassword,
 ).all { !it.isNullOrBlank() }
 
 android {
     namespace = "com.ghostnexora.ai"
     compileSdk = 35
+    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "com.ghostnexora.ai"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0-client-api-android"
+        versionCode = 3
+        versionName = "0.3.0-mobile-workspace"
+
+        externalNativeBuild {
+            cmake {
+                cFlags += listOf("-Wall", "-Wextra", "-Werror=return-type")
+            }
+        }
     }
 
     compileOptions {
@@ -51,12 +58,24 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
-            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"http://10.0.2.2:3000/\"")
+            externalNativeBuild {
+                cmake {
+                    arguments += "-DNEXORA_DEBUG_BUILD=1"
+                }
+            }
         }
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
-            buildConfigField("String", "DEFAULT_API_BASE_URL", "\"https://api.nexoraia.com/\"")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            externalNativeBuild {
+                cmake {
+                    arguments += "-DNEXORA_DEBUG_BUILD=0"
+                }
+            }
             if (releaseSigningEnabled) {
                 signingConfig = signingConfigs.getByName("release")
             }
@@ -67,15 +86,41 @@ android {
         compose = true
         buildConfig = true
     }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+        resources {
+            excludes += setOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt",
+            )
+        }
+    }
 }
 
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.09.03"))
     implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.6")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
