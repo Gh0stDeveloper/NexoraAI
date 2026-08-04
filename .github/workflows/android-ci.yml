@@ -33,6 +33,14 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install Android build packages
+        run: |
+          sdkmanager \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.0.12077973" \
+            "cmake;3.22.1"
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -40,6 +48,12 @@ jobs:
 
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Verify native library in debug APK
+        run: |
+          APK="$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          unzip -l "$APK" | grep -q "libnexora_config.so"
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
@@ -68,6 +82,14 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install Android build packages
+        run: |
+          sdkmanager \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.0.12077973" \
+            "cmake;3.22.1"
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -90,7 +112,7 @@ jobs:
 
       - name: Skip release build without signing secrets
         if: steps.signing.outputs.enabled != 'true'
-        run: echo "Release APK skipped: signing secrets are not configured yet."
+        run: echo "Release APK skipped because signing secrets are not configured yet."
 
       - name: Decode release keystore
         if: steps.signing.outputs.enabled == 'true'
@@ -107,6 +129,13 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Verify native library in release APK
+        if: steps.signing.outputs.enabled == 'true'
+        run: |
+          APK="$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          unzip -l "$APK" | grep -q "libnexora_config.so"
 
       - name: Upload release APK artifact
         if: steps.signing.outputs.enabled == 'true'
