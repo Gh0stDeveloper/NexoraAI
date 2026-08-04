@@ -31,10 +31,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+
+      - name: CI preflight
+        run: npm run ci:preflight
 
       - name: Validate repository structure
         run: npm run validate:repo
