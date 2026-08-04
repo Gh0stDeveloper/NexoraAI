@@ -1,1 +1,31 @@
-{"name":"nexora-ai","version":"0.1.0-vps-ci","private":true,"scripts":{"dev":"next dev","build":"next build","start":"next start -p ${PORT:-3000}","typecheck":"tsc --noEmit","validate:repo":"node scripts/validate-repo.mjs","security:check":"node scripts/security-check.mjs","dataset:validate":"python training/scripts/validate_dataset.py training/datasets/nexora-devsec-sample.jsonl","docker:config:vps":"docker compose -f docker-compose.vps.yml config"},"dependencies":{"next":"15.4.6","react":"19.1.0","react-dom":"19.1.0","zod":"3.25.76"},"devDependencies":{"@types/node":"22.10.2","@types/react":"19.0.2","@types/react-dom":"19.0.2","typescript":"5.7.2"},"engines":{"node":">=22.0.0"}}
+{
+  "name": "nexora-ai",
+  "version": "0.2.0-client-api-android",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start -p ${PORT:-3000}",
+    "typecheck": "tsc --noEmit",
+    "ci:preflight": "node scripts/ci-preflight.mjs",
+    "validate:repo": "node scripts/validate-repo.mjs",
+    "security:check": "node scripts/security-check.mjs",
+    "dataset:validate": "python training/scripts/validate_dataset.py training/datasets/nexora-devsec-sample.jsonl",
+    "docker:config:vps": "cp .env.vps.example .env.production && docker compose -f docker-compose.vps.yml config"
+  },
+  "dependencies": {
+    "next": "15.5.7",
+    "react": "19.1.2",
+    "react-dom": "19.1.2",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@types/react": "19.0.2",
+    "@types/react-dom": "19.0.2",
+    "typescript": "5.7.2"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
