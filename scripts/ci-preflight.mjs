@@ -7,13 +7,21 @@ const requiredFiles = [
   'Dockerfile',
   'docker-compose.vps.yml',
   '.env.vps.example',
+  'public/nexora.svg',
+  'public/manifest.json',
   '.github/workflows/web-api-ci.yml',
   '.github/workflows/docker-vps-ci.yml',
   '.github/workflows/android-ci.yml',
   '.github/workflows/training-ci.yml',
+  'src/app/page.tsx',
+  'src/app/chat/page.tsx',
+  'src/app/api/chat/route.ts',
+  'src/app/api/mobile/chat/route.ts',
+  'src/app/api/mobile/status/route.ts',
   'apps/android/GhostNexoraAndroid/settings.gradle.kts',
   'apps/android/GhostNexoraAndroid/build.gradle.kts',
   'apps/android/GhostNexoraAndroid/app/build.gradle.kts',
+  'apps/android/GhostNexoraAndroid/app/src/main/java/com/ghostnexora/ai/MainActivity.kt',
   'deploy/nginx/nexoraia-vps.conf',
   'deploy/scripts/bootstrap-vps.sh',
   'deploy/scripts/verify-vps.sh',
@@ -33,6 +41,17 @@ const requiredPackageScripts = [
 
 const errors = [];
 
+function assertIncludes(filePath, tokens, label = filePath) {
+  const absolutePath = path.join(root, filePath);
+  if (!fs.existsSync(absolutePath)) return;
+  const content = fs.readFileSync(absolutePath, 'utf8');
+  for (const token of tokens) {
+    if (!content.includes(token)) {
+      errors.push(`${label} should reference: ${token}`);
+    }
+  }
+}
+
 for (const relativePath of requiredFiles) {
   const absolutePath = path.join(root, relativePath);
   if (!fs.existsSync(absolutePath)) {
@@ -48,47 +67,23 @@ if (fs.existsSync(packagePath)) {
       errors.push(`Missing package.json script: ${scriptName}`);
     }
   }
-}
-
-const envExamplePath = path.join(root, '.env.vps.example');
-if (fs.existsSync(envExamplePath)) {
-  const envExample = fs.readFileSync(envExamplePath, 'utf8');
-  for (const key of ['APP_ENV', 'NEXT_PUBLIC_SITE_URL', 'NEXT_PUBLIC_API_URL', 'MOBILE_PRODUCTION_API_URL', 'AI_PROVIDER']) {
-    if (!envExample.includes(`${key}=`)) {
-      errors.push(`Missing VPS env key in .env.vps.example: ${key}`);
-    }
+  if (pkg.dependencies?.next !== '15.5.7') {
+    errors.push('package.json should use patched Next.js 15.5.7');
+  }
+  if (pkg.dependencies?.react !== '19.1.2' || pkg.dependencies?.['react-dom'] !== '19.1.2') {
+    errors.push('package.json should use patched React/React DOM 19.1.2');
   }
 }
 
-const dockerComposePath = path.join(root, 'docker-compose.vps.yml');
-if (fs.existsSync(dockerComposePath)) {
-  const compose = fs.readFileSync(dockerComposePath, 'utf8');
-  const requiredComposeTokens = [
-    'services:',
-    'app:',
-    'postgres:',
-    'ollama:',
-    '.env.production',
-    '127.0.0.1:3000:3000',
-    '127.0.0.1:11434:11434',
-    'pgvector/pgvector:pg16'
-  ];
-  for (const token of requiredComposeTokens) {
-    if (!compose.includes(token)) {
-      errors.push(`docker-compose.vps.yml should reference: ${token}`);
-    }
-  }
-}
-
-const androidBuildPath = path.join(root, 'apps/android/GhostNexoraAndroid/app/build.gradle.kts');
-if (fs.existsSync(androidBuildPath)) {
-  const androidBuild = fs.readFileSync(androidBuildPath, 'utf8');
-  for (const token of ['debug', 'release', 'https://api.nexoraia.com/', '10.0.2.2']) {
-    if (!androidBuild.includes(token)) {
-      errors.push(`Android build config should reference: ${token}`);
-    }
-  }
-}
+assertIncludes('.env.vps.example', ['APP_ENV=', 'NEXT_PUBLIC_SITE_URL=', 'NEXT_PUBLIC_API_URL=', 'MOBILE_PRODUCTION_API_URL=', 'AI_PROVIDER=']);
+assertIncludes('docker-compose.vps.yml', ['services:', 'app:', 'postgres:', 'ollama:', '.env.production', '127.0.0.1:3000:3000', '127.0.0.1:11434:11434', 'pgvector/pgvector:pg16']);
+assertIncludes('src/app/page.tsx', ['/chat', '/docs', '/openapi.json', 'api.nexoraia.com']);
+assertIncludes('src/app/chat/page.tsx', ['use client', 'fetch("/api/chat"', 'mode-chip', 'textarea']);
+assertIncludes('src/app/api/chat/route.ts', ['requestId', 'z.ZodError', 'runAgent']);
+assertIncludes('src/app/api/mobile/chat/route.ts', ['requestId', 'client', 'projectId']);
+assertIncludes('apps/android/GhostNexoraAndroid/app/build.gradle.kts', ['debug', 'release', 'ANDROID_KEYSTORE_PATH', 'ANDROID_KEYSTORE_PASSWORD', 'https://api.nexoraia.com/', '10.0.2.2']);
+assertIncludes('apps/android/GhostNexoraAndroid/app/src/main/java/com/ghostnexora/ai/MainActivity.kt', ['LazyColumn', 'postChat', 'JSONObject', 'X-Nexora-Client']);
+assertIncludes('.github/workflows/android-ci.yml', ['assembleDebug', 'ANDROID_KEYSTORE_BASE64', 'assembleRelease', 'nexora-ai-debug-apk', 'nexora-ai-release-apk']);
 
 if (errors.length > 0) {
   console.error('NexoraAI CI preflight failed:');
