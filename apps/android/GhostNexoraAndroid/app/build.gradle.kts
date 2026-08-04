@@ -27,6 +27,15 @@ android {
         versionName = "0.2.0-client-api-android"
     }
 
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
     signingConfigs {
         create("release") {
             if (releaseSigningEnabled) {
