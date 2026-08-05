@@ -34,8 +34,8 @@ import androidx.compose.material.icons.filled.Science
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -120,7 +120,7 @@ internal fun DrawerContent(
             }
         }
 
-        Divider(
+        HorizontalDivider(
             modifier = Modifier.padding(vertical = 12.dp),
             color = Color.White.copy(alpha = 0.08f),
         )
@@ -188,7 +188,7 @@ internal fun DrawerContent(
             }
         }
 
-        Divider(color = Color.White.copy(alpha = 0.08f))
+        HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -369,7 +369,7 @@ internal fun MessageBubble(message: ChatMessage) {
                 Text(message.content, color = Color(0xFFEAF0EE), lineHeight = 22.sp)
 
                 if (!isUser && message.elapsedMs != null) {
-                    Divider(color = Color.White.copy(alpha = 0.08f))
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
