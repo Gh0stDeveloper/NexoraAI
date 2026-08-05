@@ -112,21 +112,19 @@ ANDROID_KEY_PASSWORD
 
 El workflow reconstruye temporalmente la keystore en el runner y ejecuta `assembleRelease`. Cuando los cuatro secretos no existen, el job release se omite sin hacer fallar CI.
 
-La versión Android `0.4.1-duckdns-production` tiene compilada y ofuscada esta URL:
+La versión Android `0.5.0` utiliza como API oficial:
 
 ```txt
 https://apighostnexoraai.duckdns.org/
 ```
 
-La compilación debug conserva `http://10.0.2.2:3000/` para pruebas con emulador y no utiliza el servidor de producción.
+La compilación debug conserva `http://10.0.2.2:3000/` para pruebas con emulador y no utiliza el servidor de producción. Ninguna técnica dentro de un APK convierte un endpoint público en un secreto.
 
 ## 8. Actualizaciones posteriores
 
 ```bash
-git pull
-docker compose -f docker-compose.vps.yml up -d --build
-docker image prune -f
-VERIFY_PUBLIC_DOMAINS=true bash deploy/scripts/verify-vps.sh
+nexora update
+nexora verify
 ```
 
-Antes de actualizar, conserva una copia de `.env.production` y de los volúmenes de PostgreSQL. No subas `.env.production`, copias de la base de datos ni archivos de firma a GitHub.
+El comando crea un respaldo y conserva las cachés. Lee `docs/README-UPDATE.md` antes de actualizar producción. No subas `.env.production`, copias de la base de datos ni archivos de firma a GitHub.

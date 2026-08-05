@@ -2,7 +2,15 @@ node_modules
 .next
 .env
 .env.local
+.env.production
+.env.*.local
 *.log
+*.tsbuildinfo
+*.apk
+*.aab
+*.keystore
+*.jks
+android-signing.env
 apps/android/GhostNexoraAndroid/.gradle
 apps/android/GhostNexoraAndroid/build
 apps/android/GhostNexoraAndroid/app/build

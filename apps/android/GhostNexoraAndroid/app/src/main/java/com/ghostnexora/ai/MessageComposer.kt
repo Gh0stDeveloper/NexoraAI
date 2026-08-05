@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.ModelTraining
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.AssistChip
@@ -79,10 +80,12 @@ internal fun MessageComposer(
     onPanelChange: (ComposerPanel?) -> Unit,
     selectedModel: NexoraModel,
     intelligence: IntelligenceLevel,
+    validateCode: Boolean,
     onImage: () -> Unit,
     onFile: () -> Unit,
     onModelSelected: (NexoraModel) -> Unit,
     onIntelligenceSelected: (IntelligenceLevel) -> Unit,
+    onValidateCodeChange: (Boolean) -> Unit,
     onRemoveAttachment: (PendingAttachment) -> Unit,
     onSend: () -> Unit,
 ) {
@@ -125,6 +128,7 @@ internal fun MessageComposer(
                     panel = panel ?: ComposerPanel.ACTIONS,
                     selectedModel = selectedModel,
                     intelligence = intelligence,
+                    validateCode = validateCode,
                     onNavigate = {
                         onPanelChange(it)
                         keepInputFocused()
@@ -143,6 +147,10 @@ internal fun MessageComposer(
                     onIntelligenceSelected = {
                         onIntelligenceSelected(it)
                         onPanelChange(ComposerPanel.ACTIONS)
+                        keepInputFocused()
+                    },
+                    onValidateCodeChange = {
+                        onValidateCodeChange(it)
                         keepInputFocused()
                     },
                 )
@@ -248,12 +256,14 @@ private fun ComposerOptionsPanel(
     panel: ComposerPanel,
     selectedModel: NexoraModel,
     intelligence: IntelligenceLevel,
+    validateCode: Boolean,
     onNavigate: (ComposerPanel) -> Unit,
     onClose: () -> Unit,
     onImage: () -> Unit,
     onFile: () -> Unit,
     onModelSelected: (NexoraModel) -> Unit,
     onIntelligenceSelected: (IntelligenceLevel) -> Unit,
+    onValidateCodeChange: (Boolean) -> Unit,
 ) {
     Surface(
         color = NexoraSurfaceElevated,
@@ -332,6 +342,17 @@ private fun ComposerOptionsPanel(
                             onClick = { onNavigate(ComposerPanel.INTELLIGENCE) },
                         )
                     }
+                    OptionCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        icon = Icons.Default.Science,
+                        title = if (validateCode) "Pruebas activadas" else "Probar código",
+                        subtitle = if (validateCode) {
+                            "Laboratorio efímero · toca para desactivar"
+                        } else {
+                            "Valida Python, JavaScript o Bash de forma aislada"
+                        },
+                        onClick = { onValidateCodeChange(!validateCode) },
+                    )
                 }
 
                 ComposerPanel.MODELS -> {

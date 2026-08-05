@@ -1,37 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { runAgent } from "@/lib/agent";
-
-const attachmentSchema = z
-  .object({
-    name: z.string().trim().min(1).max(240),
-    mimeType: z.string().trim().min(1).max(160),
-    sizeBytes: z.number().int().nonnegative().max(8 * 1024 * 1024),
-    text: z.string().max(80_000).optional(),
-    base64: z.string().max(12_000_000).optional(),
-  })
-  .refine((attachment) => Boolean(attachment.text || attachment.base64), {
-    message: "Each attachment must include text or base64 content",
-  });
-
-const schema = z.object({
-  message: z.string().trim().min(1).max(32_000),
-  mode: z.enum(["auto", "fullstack", "android", "backend", "security", "data", "devops"]).default("auto"),
-  intelligence: z.enum(["instant", "medium", "high", "maximum"]).default("medium"),
-  projectId: z.string().trim().min(1).max(160).optional(),
-  conversationId: z.string().trim().min(1).max(160).optional(),
-  client: z.string().trim().max(80).default("android"),
-  attachments: z.array(attachmentSchema).max(3).default([]),
-});
+import { mobileChatError, mobileChatSchema } from "@/lib/mobile-chat";
+import { checkMobileRateLimit } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
+  const rate = checkMobileRateLimit(req);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      { ok: false, error: "Demasiadas solicitudes. Inténtalo de nuevo en un minuto." },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(rate.retryAfterSeconds),
+          "X-RateLimit-Limit": String(rate.limit),
+          "X-RateLimit-Remaining": String(rate.remaining),
+        },
+      },
+    );
+  }
+
   try {
-    const body = schema.parse(await req.json());
-    const scopedMessage = body.projectId ? `[project:${body.projectId}]\n${body.message}` : body.message;
-    const result = await runAgent(scopedMessage, body.mode, {
+    const body = mobileChatSchema.parse(await req.json());
+    const result = await runAgent(body.message, body.mode, {
       intelligence: body.intelligence,
       attachments: body.attachments,
       conversationId: body.conversationId,
+      projectId: body.projectId,
+      validateCode: body.validateCode,
     });
 
     return NextResponse.json({
@@ -46,10 +41,9 @@ export async function POST(req: NextRequest) {
       ...result,
     });
   } catch (error) {
-    const message =
-      error instanceof z.ZodError
-        ? error.issues.map((issue) => issue.message).join("; ")
-        : "Invalid mobile chat request";
-    return NextResponse.json({ ok: false, error: message }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: mobileChatError(error) },
+      { status: 400 },
+    );
   }
 }
