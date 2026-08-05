@@ -30,13 +30,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.ModelTraining
 import androidx.compose.material.icons.filled.Science
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -243,7 +243,7 @@ internal fun MessageComposer(
                             strokeWidth = 2.dp,
                         )
                     } else {
-                        Icon(Icons.Default.Send, contentDescription = "Enviar")
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar")
                     }
                 }
             }

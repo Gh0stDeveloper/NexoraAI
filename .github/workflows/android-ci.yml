@@ -65,9 +65,8 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Compile signed release APK when secrets exist
+    name: Compile minified release APK
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
     defaults:
       run:
         working-directory: apps/android/GhostNexoraAndroid
@@ -112,9 +111,9 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Skip release build without signing secrets
+      - name: Report unsigned release validation
         if: steps.signing.outputs.enabled != 'true'
-        run: echo "Release APK skipped because signing secrets are not configured yet."
+        run: echo "Signing secrets are unavailable; CI will compile an unsigned minified release APK."
 
       - name: Decode release keystore
         if: steps.signing.outputs.enabled == 'true'
@@ -123,7 +122,11 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: printf '%s' "$KEYSTORE_BASE64" | base64 -d > app/release.keystore
 
-      - name: Build signed release APK
+      - name: Build unsigned minified release APK
+        if: steps.signing.outputs.enabled != 'true'
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Build signed minified release APK
         if: steps.signing.outputs.enabled == 'true'
         env:
           ANDROID_KEYSTORE_PATH: release.keystore
@@ -133,7 +136,6 @@ jobs:
         run: gradle assembleRelease --no-daemon --stacktrace
 
       - name: Verify native library in release APK
-        if: steps.signing.outputs.enabled == 'true'
         run: |
           APK="$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)"
           test -n "$APK"
