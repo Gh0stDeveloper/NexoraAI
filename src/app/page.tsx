@@ -60,7 +60,7 @@ export default function Page() {
     name: "Nexora AI",
     applicationCategory: "DeveloperApplication",
     operatingSystem: "Android 8.0 or later",
-    softwareVersion: "0.5.0",
+    softwareVersion: "0.5.1",
     description:
       "Cliente Android para una inteligencia artificial privada alojada en una VPS propia.",
     offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
@@ -196,7 +196,7 @@ export default function Page() {
 
       <section className="download-section page-width">
         <div>
-          <p className="kicker">Nexora AI 0.5.0</p>
+          <p className="kicker">Nexora AI 0.5.1</p>
           <h2>Lleva tu IA contigo.</h2>
           <p>Descarga el cliente Android y conéctalo a la API de tu propia VPS.</p>
         </div>

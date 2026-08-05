@@ -5,7 +5,7 @@ export async function GET() {
     ok: true,
     app: "Nexora AI",
     status: "ready",
-    version: process.env.APP_VERSION ?? "0.5.0",
+    version: process.env.APP_VERSION ?? "0.5.1",
     provider: process.env.AI_PROVIDER ?? "ollama",
     siteUrl:
       process.env.NEXT_PUBLIC_SITE_URL ??

@@ -1,12 +1,13 @@
 {
   "name": "nexora-ai",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start -p ${PORT:-3000}",
     "typecheck": "tsc --noEmit",
+    "test:contracts": "node --no-warnings --experimental-strip-types --test scripts/mobile-chat-contract.test.mjs",
     "ci:preflight": "node scripts/ci-preflight.mjs",
     "validate:repo": "node scripts/validate-repo.mjs",
     "security:check": "node scripts/security-check.mjs",

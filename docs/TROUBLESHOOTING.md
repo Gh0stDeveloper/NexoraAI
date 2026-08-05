@@ -88,7 +88,7 @@ sudo systemctl reload nginx
 ```bash
 sudo nexora android-release
 ls -l /opt/nexora-ai/releases/
-curl -I https://ghostnexoraai.duckdns.org/downloads/NexoraAI-0.5.0.apk
+curl -I https://ghostnexoraai.duckdns.org/downloads/NexoraAI-0.5.1.apk
 ```
 
 Comprueba que `ANDROID_APK_URL` tenga el mismo nombre y reinicia la aplicación web.
@@ -104,7 +104,7 @@ La firma cambió. Debes compilar con la keystore original. Verifica que `ANDROID
 ## `libnexora.so` falta
 
 ```bash
-unzip -l NexoraAI-0.5.0.apk | grep libnexora.so
+unzip -l NexoraAI-0.5.1.apk | grep libnexora.so
 ```
 
 Debe aparecer en cuatro rutas ABI. Si falta, revisa NDK/CMake y el job “Verify native library”.

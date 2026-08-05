@@ -27,6 +27,12 @@ jobs:
       - name: Validate shell scripts
         run: find deploy/scripts -type f -name "*.sh" -print0 | xargs -0 -I{} bash -n {}
 
+      - name: Test transient VPS startup failures
+        run: bash scripts/vps-healthcheck.test.sh
+
+      - name: Test VPS update and automatic rollback
+        run: bash scripts/vps-update-contract.test.sh
+
       - name: Validate sandbox runner syntax
         run: node --check sandbox/server.mjs
 

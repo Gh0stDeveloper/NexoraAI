@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+const mobileIdentifierSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(160)
+  .nullish()
+  .transform((identifier) => identifier ?? undefined);
+
 export const mobileAttachmentSchema = z
   .object({
     name: z.string().trim().min(1).max(240),
@@ -18,8 +26,8 @@ export const mobileChatSchema = z.object({
     .enum(["auto", "fullstack", "android", "backend", "security", "data", "devops"])
     .default("auto"),
   intelligence: z.enum(["instant", "medium", "high", "maximum"]).default("medium"),
-  projectId: z.string().trim().min(1).max(160).optional(),
-  conversationId: z.string().trim().min(1).max(160).optional(),
+  projectId: mobileIdentifierSchema,
+  conversationId: mobileIdentifierSchema,
   client: z.string().trim().max(80).default("android"),
   validateCode: z.boolean().default(false),
   attachments: z.array(mobileAttachmentSchema).max(3).default([]),
@@ -28,7 +36,19 @@ export const mobileChatSchema = z.object({
 export type MobileChatRequest = z.infer<typeof mobileChatSchema>;
 
 export function mobileChatError(error: unknown): string {
-  return error instanceof z.ZodError
-    ? error.issues.map((issue) => issue.message).join("; ")
-    : "Invalid mobile chat request";
+  if (!(error instanceof z.ZodError)) {
+    return "No se pudo validar la solicitud móvil.";
+  }
+
+  const invalidFields = [
+    ...new Set(
+      error.issues
+        .map((issue) => issue.path.join("."))
+        .filter((field) => field.length > 0),
+    ),
+  ];
+
+  return invalidFields.length > 0
+    ? `La solicitud contiene campos inválidos: ${invalidFields.join(", ")}.`
+    : "La solicitud móvil contiene datos inválidos.";
 }

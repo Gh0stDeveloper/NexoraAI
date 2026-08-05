@@ -5,7 +5,7 @@ Esta guía evita perder `.env.production`, PostgreSQL, modelos Ollama, cachés A
 ## Antes de actualizar
 
 ```bash
-cd /opt/nexora-ai/app
+cd /opt/NexoraAI
 nexora status
 git status --short
 nexora backup
@@ -29,12 +29,26 @@ nexora update
 El comando realiza en orden:
 
 1. Comprueba que Git esté limpio.
-2. Crea un `pg_dump` comprimido si PostgreSQL está activo.
-3. Guarda el commit anterior en `/opt/nexora-ai/state/previous-version`.
-4. Descarga `origin/main` y solo acepta avance rápido.
-5. Reconstruye la aplicación reutilizando la caché Docker.
-6. Inicia servicios y elimina contenedores obsoletos.
-7. Verifica Compose, web, API y sandbox si está habilitado.
+2. Adquiere un bloqueo para impedir actualizaciones, rollback o compilaciones simultáneas.
+3. Descarga la referencia objetivo y no reinicia nada si ya está instalada.
+4. Crea un `pg_dump` comprimido si PostgreSQL está activo.
+5. Guarda el commit anterior en `/opt/nexora-ai/state/previous-version`.
+6. Solo acepta un avance rápido y reconstruye reutilizando la caché Docker.
+7. Espera el healthcheck y reintenta web, API y sandbox ante fallos transitorios.
+8. Si falla build, arranque o verificación, restaura automáticamente el commit anterior.
+
+Por defecto sigue `origin/main`. También acepta una referencia Git explícita:
+
+```bash
+nexora update origin/main
+```
+
+El tiempo de arranque predeterminado es 180 segundos. En una VPS especialmente lenta puede
+ampliarse solo para esa ejecución:
+
+```bash
+NEXORA_VERIFY_TIMEOUT_SECONDS=300 nexora update
+```
 
 ## Cambios de configuración
 
@@ -69,7 +83,9 @@ nexora restart
 
 ## Rollback
 
-Si la verificación falla, el comando muestra el commit anterior:
+Si una actualización falla, el rollback se ejecuta automáticamente y el comando termina con
+error para dejar constancia de que no se instaló la versión nueva. El rollback manual sigue
+disponible:
 
 ```bash
 nexora rollback <sha-anterior>
@@ -82,6 +98,9 @@ nexora rollback
 ```
 
 El rollback modifica únicamente el checkout dedicado de Nexora AI y se niega a continuar si hay cambios locales.
+
+Los respaldos PostgreSQL con más de 30 días se eliminan después de crear uno nuevo. Para
+cambiar la retención usa `NEXORA_BACKUP_RETENTION_DAYS`; el valor `0` desactiva esa limpieza.
 
 Para restaurar PostgreSQL manualmente:
 

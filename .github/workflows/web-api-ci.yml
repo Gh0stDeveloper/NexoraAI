@@ -38,6 +38,9 @@ jobs:
       - name: CI preflight
         run: npm run ci:preflight
 
+      - name: Validate mobile API contracts
+        run: npm run test:contracts
+
       - name: Validate repository structure
         run: npm run validate:repo
 

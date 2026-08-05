@@ -5,7 +5,7 @@ export async function GET() {
     openapi: "3.1.0",
     info: {
       title: "Nexora AI API",
-      version: "0.5.0",
+      version: "0.5.1",
       description: "API para el cliente Android de Nexora AI.",
     },
     paths: {

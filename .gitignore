@@ -12,6 +12,9 @@ node_modules
 *.jks
 android-signing.env
 apps/android/GhostNexoraAndroid/.gradle
+apps/android/GhostNexoraAndroid/.kotlin
 apps/android/GhostNexoraAndroid/build
 apps/android/GhostNexoraAndroid/app/build
+apps/android/GhostNexoraAndroid/app/.cxx
+apps/android/GhostNexoraAndroid/app/.externalNativeBuild
 training/output

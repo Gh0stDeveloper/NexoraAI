@@ -71,15 +71,15 @@ Usa exactamente los valores de `android-signing.env`. El workflow jamás genera 
 ## Verificar un APK
 
 ```bash
-sha256sum -c /opt/nexora-ai/releases/NexoraAI-0.5.0.apk.sha256
-unzip -l /opt/nexora-ai/releases/NexoraAI-0.5.0.apk | grep libnexora.so
+sha256sum -c /opt/nexora-ai/releases/NexoraAI-0.5.1.apk.sha256
+unzip -l /opt/nexora-ai/releases/NexoraAI-0.5.1.apk | grep libnexora.so
 ```
 
 Debes encontrar `libnexora.so` en las cuatro ABI. Para comprobar firma:
 
 ```bash
 /opt/nexora-ai/android-sdk/build-tools/35.0.0/apksigner verify --verbose \
-  /opt/nexora-ai/releases/NexoraAI-0.5.0.apk
+  /opt/nexora-ai/releases/NexoraAI-0.5.1.apk
 ```
 
 ## Cambiar la URL de API
