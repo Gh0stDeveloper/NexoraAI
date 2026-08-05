@@ -5,3 +5,6 @@ node_modules
 apps/android/GhostNexoraAndroid/.gradle
 apps/android/GhostNexoraAndroid/build
 apps/android/GhostNexoraAndroid/app/build
+build-worker/template/.gradle
+build-worker/template/build
+build-worker/template/app/build

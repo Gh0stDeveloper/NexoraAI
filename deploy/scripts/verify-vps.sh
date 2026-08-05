@@ -39,6 +39,9 @@ COMPOSE=(docker compose --env-file "$ENV_FILE" -f docker-compose.vps.yml)
 if grep -Eq '^ALLOW_CODE_EXECUTION=true$' "$ENV_FILE"; then
   COMPOSE+=(--profile sandbox)
 fi
+if grep -Eq '^ENABLE_USER_ANDROID_BUILDS=true$' "$ENV_FILE"; then
+  COMPOSE+=(--profile user-builds)
+fi
 
 "${COMPOSE[@]}" config >/dev/null
 
@@ -94,6 +97,11 @@ wait_for_http() {
       --output /dev/null "$url"
 }
 
+android_build_worker_running() {
+  "${COMPOSE[@]}" ps --status running --services android-build-worker |
+    grep -Fxq android-build-worker
+}
+
 printf 'Comprobando aplicación local...\n'
 if ! wait_for_http \
   'health local' \
@@ -120,6 +128,16 @@ if grep -Eq '^ALLOW_CODE_EXECUTION=true$' "$ENV_FILE"; then
     exit 1
   fi
   printf 'OK: laboratorio aislado activo.\n'
+fi
+
+if grep -Eq '^ENABLE_USER_ANDROID_BUILDS=true$' "$ENV_FILE"; then
+  if ! wait_for_command 'compilador Android efímero' "$VERIFY_STARTUP_TIMEOUT_SECONDS" \
+    android_build_worker_running; then
+    "${COMPOSE[@]}" ps android-build-worker >&2 || true
+    "${COMPOSE[@]}" logs --no-color --tail=120 android-build-worker >&2 || true
+    exit 1
+  fi
+  printf 'OK: compilador Android efímero activo.\n'
 fi
 
 if [[ "$VERIFY_PUBLIC_DOMAINS" == "true" ]]; then

@@ -7,6 +7,7 @@ enum class NexoraModel(
     val label: String,
     val description: String,
 ) {
+    ASSISTANT("assistant", "Asistente", "Conversaciones naturales, ideas, aprendizaje y ayuda cotidiana."),
     AUTO("auto", "Automático", "Nexora selecciona la especialidad más adecuada."),
     FULL_STACK("fullstack", "Full-stack", "Web, frontend, backend, APIs y bases de datos."),
     ANDROID("android", "Android", "Kotlin, Jetpack Compose, Gradle y arquitectura móvil."),
@@ -67,17 +68,91 @@ data class ChatResponse(
     val error: String? = null,
 )
 
+enum class RequestStatus(val wireValue: String) {
+    QUEUED("queued"),
+    PROCESSING("processing"),
+    COMPLETED("completed"),
+    FAILED("failed"),
+}
+
+enum class AndroidBuildStatus(val wireValue: String) {
+    QUEUED("queued"),
+    BUILDING("building"),
+    COMPLETED("completed"),
+    FAILED("failed"),
+    EXPIRED("expired"),
+}
+
+data class AndroidBuildArtifact(
+    val requestId: String,
+    val status: AndroidBuildStatus,
+    val appName: String,
+    val progressLabel: String,
+    val fileName: String? = null,
+    val downloadUrl: String? = null,
+    val sha256: String? = null,
+    val expiresAt: String? = null,
+    val signatureSchemes: List<String> = emptyList(),
+    val error: String? = null,
+)
+
 data class ChatMessage(
     val id: String = UUID.randomUUID().toString(),
     val role: String,
     val content: String,
     val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = createdAt,
     val attachmentNames: List<String> = emptyList(),
     val elapsedMs: Long? = null,
     val agentsUsed: Int? = null,
     val provider: String? = null,
     val trace: List<AgentProgress> = emptyList(),
     val codeValidation: CodeValidationSummary? = null,
+    val requestId: String? = null,
+    val requestStatus: RequestStatus? = null,
+    val buildArtifact: AndroidBuildArtifact? = null,
+)
+
+data class PendingChatRequest(
+    val requestId: String,
+    val requestToken: String,
+    val conversationId: String,
+    val projectId: String?,
+    val message: String,
+    val model: NexoraModel,
+    val intelligence: IntelligenceLevel,
+    val validateCode: Boolean,
+    val attachments: List<PendingAttachment>,
+    val submitted: Boolean = false,
+)
+
+data class PendingAndroidBuildRequest(
+    val requestId: String,
+    val requestToken: String,
+    val deviceId: String,
+    val conversationId: String,
+    val messageId: String,
+    val appName: String,
+    val accentColor: String,
+    val sourcePrompt: String,
+    val sourceContent: String,
+    val submitted: Boolean = false,
+)
+
+data class ChatJobSnapshot(
+    val requestId: String,
+    val status: RequestStatus,
+    val progress: List<AgentProgress>,
+    val result: ChatResponse? = null,
+    val error: String? = null,
+)
+
+data class MobileRelease(
+    val version: String,
+    val versionCode: Int,
+    val downloadUrl: String,
+    val sha256: String,
+    val userBuildsEnabled: Boolean,
 )
 
 data class ChatProject(

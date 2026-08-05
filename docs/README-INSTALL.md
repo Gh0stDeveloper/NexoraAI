@@ -77,7 +77,7 @@ API_DOMAIN=apighostnexoraai.duckdns.org
 NEXT_PUBLIC_SITE_URL=https://ghostnexoraai.duckdns.org
 NEXT_PUBLIC_API_URL=https://apighostnexoraai.duckdns.org
 MOBILE_PRODUCTION_API_URL=https://apighostnexoraai.duckdns.org/
-ANDROID_APK_URL=https://ghostnexoraai.duckdns.org/downloads/NexoraAI-0.5.1.apk
+ANDROID_APK_URL=https://ghostnexoraai.duckdns.org/downloads/NexoraAI-latest.apk
 ALLOW_CODE_EXECUTION=false
 RATE_LIMIT_PER_MINUTE=80
 ```
@@ -161,13 +161,13 @@ sudo nexora android-release
 El APK quedará en:
 
 ```text
-/opt/nexora-ai/releases/NexoraAI-0.5.1.apk
+/opt/nexora-ai/releases/NexoraAI-0.6.0.apk
 ```
 
 Nginx lo sirve en:
 
 ```text
-https://ghostnexoraai.duckdns.org/downloads/NexoraAI-0.5.1.apk
+https://ghostnexoraai.duckdns.org/downloads/NexoraAI-latest.apk
 ```
 
 Respalda inmediatamente:
@@ -185,7 +185,7 @@ No compartas `android-signing.env` ni lo copies al repositorio.
 cd /opt/nexora-ai/app
 VERIFY_PUBLIC_DOMAINS=true nexora verify
 curl https://apighostnexoraai.duckdns.org/api/mobile/status
-curl -I https://ghostnexoraai.duckdns.org/downloads/NexoraAI-0.5.1.apk
+curl -I https://ghostnexoraai.duckdns.org/downloads/NexoraAI-latest.apk
 ```
 
 Comprueba además desde Android:

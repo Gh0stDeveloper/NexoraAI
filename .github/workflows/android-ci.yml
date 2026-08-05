@@ -143,6 +143,40 @@ jobs:
             unzip -l "$APK" | grep -q "lib/$ABI/libnexora.so"
           done
 
+      - name: Verify official V1 V2 V3 signature
+        if: steps.signing.outputs.enabled == 'true'
+        run: |
+          APK="$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)"
+          VERIFY="$(apksigner verify --verbose "$APK")"
+          grep -Eiq 'Verified using v1 scheme.*: true' <<< "$VERIFY"
+          grep -Eiq 'Verified using v2 scheme.*: true' <<< "$VERIFY"
+          grep -Eiq 'Verified using v3 scheme.*: true' <<< "$VERIFY"
+
+      - name: Build and verify safe user application template
+        shell: bash
+        run: |
+          KEYSTORE="$RUNNER_TEMP/nexora-user-builds.jks"
+          keytool -genkeypair -noprompt \
+            -keystore "$KEYSTORE" \
+            -storetype JKS \
+            -storepass ci-store-password \
+            -keypass ci-key-password \
+            -alias nexora-user-builds \
+            -keyalg RSA -keysize 2048 -validity 30 \
+            -dname "CN=Nexora CI, O=Ghost Developer, C=MX"
+          ANDROID_KEYSTORE_PATH="$KEYSTORE" \
+          ANDROID_KEYSTORE_PASSWORD=ci-store-password \
+          ANDROID_KEY_ALIAS=nexora-user-builds \
+          ANDROID_KEY_PASSWORD=ci-key-password \
+            gradle -p ../../../build-worker/template \
+              assembleRelease --no-daemon --stacktrace
+          APK="$(find ../../../build-worker/template/app/build/outputs/apk/release -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          VERIFY="$(apksigner verify --verbose "$APK")"
+          grep -Eiq 'Verified using v1 scheme.*: true' <<< "$VERIFY"
+          grep -Eiq 'Verified using v2 scheme.*: true' <<< "$VERIFY"
+          grep -Eiq 'Verified using v3 scheme.*: true' <<< "$VERIFY"
+
       - name: Upload release APK artifact
         if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4

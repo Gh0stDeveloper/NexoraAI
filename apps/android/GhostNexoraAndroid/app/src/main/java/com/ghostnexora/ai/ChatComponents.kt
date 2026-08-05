@@ -14,14 +14,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Android
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
@@ -30,6 +33,8 @@ import androidx.compose.material.icons.filled.Policy
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -41,6 +46,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -71,11 +77,17 @@ internal fun DrawerContent(
     onOpenTerms: () -> Unit,
     onOpenPrivacy: () -> Unit,
 ) {
+    var search by remember { mutableStateOf("") }
+    val visibleSessions = if (search.isBlank()) {
+        sessions
+    } else {
+        sessions.filter { it.title.contains(search.trim(), ignoreCase = true) }
+    }
     val orderedProjects = projects.sortedWith(
         compareByDescending<ChatProject> { it.isPinned }.thenByDescending { it.updatedAt },
     )
-    val pinnedChats = sessions.filter { it.isPinned }.sortedByDescending { it.updatedAt }
-    val independentChats = sessions
+    val pinnedChats = visibleSessions.filter { it.isPinned }.sortedByDescending { it.updatedAt }
+    val independentChats = visibleSessions
         .filter { it.projectId == null }
         .sortedWith(compareByDescending<ChatSession> { it.isPinned }.thenByDescending { it.updatedAt })
 
@@ -93,6 +105,18 @@ internal fun DrawerContent(
                 Text("Chats, fijados y proyectos", color = NexoraMuted, fontSize = 12.sp)
             }
         }
+
+        OutlinedTextField(
+            value = search,
+            onValueChange = { search = it.take(60) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 4.dp),
+            singleLine = true,
+            shape = RoundedCornerShape(18.dp),
+            placeholder = { Text("Buscar en el historial") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+        )
 
         Row(
             modifier = Modifier
@@ -156,7 +180,7 @@ internal fun DrawerContent(
                         )
                     }
                     items(
-                        sessions
+                        visibleSessions
                             .filter { it.projectId == project.id }
                             .sortedWith(
                                 compareByDescending<ChatSession> { it.isPinned }
@@ -230,18 +254,33 @@ private fun SessionRow(
     onDelete: (ChatSession) -> Unit,
     onTogglePin: (ChatSession) -> Unit,
 ) {
+    val pending = session.messages.any {
+        it.requestStatus == RequestStatus.QUEUED ||
+            it.requestStatus == RequestStatus.PROCESSING
+    }
     ListItem(
         headlineContent = {
             Text(session.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
         },
         supportingContent = {
-            Text("${session.model.label} · ${session.messages.size} mensajes", maxLines = 1)
+            Text(
+                if (pending) {
+                    "Respuesta en proceso · puedes volver después"
+                } else {
+                    "${session.model.label} · ${session.messages.size} mensajes"
+                },
+                maxLines = 1,
+            )
         },
         leadingContent = {
             Icon(
-                if (session.isPinned) Icons.Default.PushPin else Icons.Default.History,
+                when {
+                    pending -> Icons.Default.RadioButtonChecked
+                    session.isPinned -> Icons.Default.PushPin
+                    else -> Icons.Default.History
+                },
                 contentDescription = null,
-                tint = if (session.isPinned) NexoraAccent else NexoraMuted,
+                tint = if (pending || session.isPinned) NexoraAccent else NexoraMuted,
             )
         },
         trailingContent = {
@@ -302,19 +341,50 @@ private fun ProjectRow(
 }
 
 @Composable
-internal fun EmptyChatState(modifier: Modifier = Modifier) {
+internal fun EmptyChatState(
+    modifier: Modifier = Modifier,
+    onSuggestion: (String) -> Unit,
+) {
     Column(
         modifier = modifier.padding(28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         NexoraMark(78.dp)
-        Text("¿Qué quieres construir hoy?", fontSize = 25.sp, fontWeight = FontWeight.Black)
+        Text("¿En qué puedo ayudarte?", fontSize = 27.sp, fontWeight = FontWeight.Black)
         Text(
-            "Describe una tarea o usa + para añadir archivos, elegir especialistas y activar pruebas aisladas.",
+            "Conversa con el asistente o cambia de especialidad cuando quieras crear, revisar o desplegar algo.",
             color = NexoraMuted,
             fontSize = 15.sp,
         )
+        listOf(
+            "Ayúdame a convertir una idea en un plan claro",
+            "Revisa este problema paso a paso",
+            "Diseña una aplicación Android moderna",
+        ).forEach { suggestion ->
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSuggestion(suggestion) },
+                color = Color.White.copy(alpha = 0.045f),
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = NexoraAccent,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.size(10.dp))
+                    Text(suggestion, color = Color(0xFFE4ECE9), fontSize = 13.sp)
+                }
+            }
+        }
         Surface(
             color = NexoraAccent.copy(alpha = 0.08f),
             shape = RoundedCornerShape(18.dp),
@@ -331,7 +401,12 @@ internal fun EmptyChatState(modifier: Modifier = Modifier) {
 }
 
 @Composable
-internal fun MessageBubble(message: ChatMessage) {
+internal fun MessageBubble(
+    message: ChatMessage,
+    userBuildsEnabled: Boolean,
+    onBuild: (ChatMessage) -> Unit,
+    onDownload: (String) -> Unit,
+) {
     val isUser = message.role == "user"
     var detailsVisible by remember(message.id) { mutableStateOf(false) }
     Row(
@@ -342,7 +417,7 @@ internal fun MessageBubble(message: ChatMessage) {
             modifier = Modifier.fillMaxWidth(if (isUser) 0.88f else 0.98f),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(
-                containerColor = if (isUser) Color(0xFF116C58) else Color(0xE6111824),
+                containerColor = if (isUser) Color(0xFF2F2F2F) else Color(0xF2171717),
             ),
             border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
         ) {
@@ -367,6 +442,29 @@ internal fun MessageBubble(message: ChatMessage) {
                     }
                 }
                 Text(message.content, color = Color(0xFFEAF0EE), lineHeight = 22.sp)
+
+                if (!isUser) {
+                    message.buildArtifact?.let { artifact ->
+                        AndroidBuildCard(artifact = artifact, onDownload = onDownload)
+                    } ?: if (
+                        userBuildsEnabled &&
+                        message.content.isNotBlank() &&
+                        message.requestStatus != RequestStatus.FAILED
+                    ) {
+                        FilledTonalButton(
+                            onClick = { onBuild(message) },
+                            shape = RoundedCornerShape(16.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.Android,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.size(7.dp))
+                            Text("Crear APK con esta respuesta")
+                        }
+                    }
+                }
 
                 if (!isUser && message.elapsedMs != null) {
                     HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
@@ -393,6 +491,80 @@ internal fun MessageBubble(message: ChatMessage) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AndroidBuildCard(
+    artifact: AndroidBuildArtifact,
+    onDownload: (String) -> Unit,
+) {
+    val completed = artifact.status == AndroidBuildStatus.COMPLETED
+    val failed = artifact.status == AndroidBuildStatus.FAILED ||
+        artifact.status == AndroidBuildStatus.EXPIRED
+    Surface(
+        color = when {
+            completed -> NexoraAccent.copy(alpha = 0.10f)
+            failed -> Color(0xFFEF4444).copy(alpha = 0.10f)
+            else -> Color.White.copy(alpha = 0.045f)
+        },
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(
+            1.dp,
+            when {
+                completed -> NexoraAccent.copy(alpha = 0.28f)
+                failed -> Color(0xFFEF4444).copy(alpha = 0.30f)
+                else -> Color.White.copy(alpha = 0.10f)
+            },
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    when {
+                        completed -> Icons.Default.CheckCircle
+                        failed -> Icons.Default.ErrorOutline
+                        else -> Icons.Default.Schedule
+                    },
+                    contentDescription = null,
+                    tint = when {
+                        completed -> NexoraAccent
+                        failed -> Color(0xFFF87171)
+                        else -> Color(0xFF93C5FD)
+                    },
+                )
+                Spacer(Modifier.size(9.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(artifact.appName, fontWeight = FontWeight.Bold)
+                    Text(artifact.progressLabel, color = NexoraMuted, fontSize = 12.sp)
+                }
+            }
+            if (!completed && !failed) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            if (completed) {
+                Text(
+                    "Firma ${artifact.signatureSchemes.joinToString(" + ")} · disponible durante 1 hora",
+                    color = Color(0xFFC8D8D3),
+                    fontSize = 11.sp,
+                )
+                artifact.downloadUrl?.let { url ->
+                    Button(
+                        onClick = { onDownload(url) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null)
+                        Spacer(Modifier.size(7.dp))
+                        Text("Descargar APK")
+                    }
+                }
+            }
+            artifact.error?.let { Text(it, color = Color(0xFFFCA5A5), fontSize = 12.sp) }
         }
     }
 }
@@ -451,7 +623,7 @@ internal fun AssistantThinking(
     Card(
         modifier = Modifier.fillMaxWidth(0.98f),
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xE6111824)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xF2171717)),
         border = BorderStroke(1.dp, NexoraAccent.copy(alpha = 0.2f)),
     ) {
         Column(

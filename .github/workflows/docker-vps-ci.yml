@@ -53,3 +53,6 @@ jobs:
 
       - name: Build sandbox runner image
         run: docker build -t nexora-ai-sandbox:${{ github.sha }} sandbox
+
+      - name: Build isolated Android worker image
+        run: docker build -f build-worker/Dockerfile -t nexora-ai-build-worker:${{ github.sha }} .

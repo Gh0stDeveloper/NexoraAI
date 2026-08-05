@@ -1,0 +1,3 @@
+Vista previa segura del compilador temporal de Nexora AI.
+
+Este contenido se sustituye por la respuesta seleccionada antes de cada compilación.

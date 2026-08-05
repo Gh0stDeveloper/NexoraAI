@@ -17,7 +17,8 @@ bash "$ROOT/deploy/scripts/platform-check.sh"
 sudo apt-get update
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   ca-certificates curl git gnupg jq openssl unzip \
-  nginx certbot python3-certbot-nginx ufw fail2ban util-linux
+  nginx certbot python3-certbot-nginx ufw fail2ban util-linux \
+  openjdk-17-jdk-headless
 
 if ! command -v docker >/dev/null 2>&1; then
   # shellcheck disable=SC1091
@@ -90,16 +91,23 @@ sudo mkdir -p \
   /etc/nexora-ai \
   /opt/nexora-ai/backups \
   /opt/nexora-ai/cache/gradle \
+  /opt/nexora-ai/cache/user-gradle \
   /opt/nexora-ai/releases \
   /opt/nexora-ai/secrets \
+  /opt/nexora-ai/secrets/user-builds \
   /opt/nexora-ai/state \
-  /var/lib/nexora-ai/sandbox-jobs
+  /var/lib/nexora-ai/sandbox-jobs \
+  /var/lib/nexora-ai/android-build-jobs
 printf '%s\n' "$ROOT" | sudo tee /etc/nexora-ai/root >/dev/null
 sudo chmod 700 /opt/nexora-ai/secrets /var/lib/nexora-ai/sandbox-jobs
+sudo chown 1001:1001 \
+  /opt/nexora-ai/cache/user-gradle \
+  /var/lib/nexora-ai/android-build-jobs
 operator_user="${SUDO_USER:-$USER}"
 operator_group="$(id -gn "$operator_user")"
 sudo chown "$operator_user:$operator_group" /opt/nexora-ai/backups /opt/nexora-ai/state
 sudo install -m 0755 "$ROOT/deploy/scripts/nexora-vps.sh" /usr/local/bin/nexora
+sudo bash "$ROOT/deploy/scripts/user-build-keystore.sh"
 
 if [[ ! -f "$ROOT/.env.production" ]]; then
   cp "$ROOT/.env.vps.example" "$ROOT/.env.production"

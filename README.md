@@ -22,9 +22,12 @@
 
 ---
 
-## ✨ Qué incluye la versión 0.5.1
+## ✨ Qué incluye la versión 0.6.0
 
 - 📱 Aplicación Android nativa con Kotlin y Jetpack Compose.
+- 💬 Asistente general para conversaciones normales, además de especialistas técnicos.
+- ♻️ Solicitudes persistentes: cerrar o cambiar de chat no cancela la respuesta.
+- 🔎 Historial buscable con chats, proyectos, fijados y estados en segundo plano.
 - 🧠 Respuestas instantáneas o colaboración de 3, 4 y 6 agentes.
 - ⏱️ Cronómetro real, etapas de actividad y tiempo total de pensamiento.
 - 📌 Chats y proyectos fijados; chats organizados dentro de proyectos.
@@ -36,6 +39,8 @@
 - 🐳 API, Ollama y PostgreSQL listos para Docker Compose en VPS propia.
 - 🔁 Actualización, respaldo, verificación y rollback mediante el comando `nexora`.
 - 🔑 Compilación release en VPS AMD64 con SDK, Gradle y keystore persistentes.
+- 📦 Publicación oficial automática mediante `latest.json` y firma V1+V2+V3.
+- ⏳ APK temporales solicitados desde una respuesta, con URL privada de una hora.
 - ✅ GitHub Actions para web/API, Android, Docker, dataset y compatibilidad Linux.
 
 > [!IMPORTANT]
@@ -45,11 +50,12 @@
 
 ```mermaid
 flowchart LR
-  A["Android · Kotlin/Compose"] -->|"HTTPS + NDJSON"| B["Nexora API · Next.js"]
+  A["Android · Compose + WorkManager"] -->|"HTTPS + trabajos idempotentes"| B["Nexora API · Next.js"]
   B --> C["Agentes · Ollama"]
   B --> D["PostgreSQL / pgvector"]
   B -. "opcional" .-> E["Sandbox efímero"]
   E --> F["Contenedor sin red"]
+  D --> G["Worker APK aislado"]
 ```
 
 | Capa | Tecnología | Función |
@@ -57,10 +63,11 @@ flowchart LR
 | Web pública | Next.js 16, React 19, TypeScript, CSS | Presentación, SEO, descarga, términos y privacidad |
 | API | Next.js Route Handlers, Zod | Validación, chat móvil, progreso NDJSON y estado |
 | IA | Ollama, modelos configurables | Inferencia local y colaboración por roles |
-| Android | Kotlin 2, Jetpack Compose, Coroutines | Chats, proyectos, adjuntos y actividad en vivo |
+| Android | Kotlin 2, Jetpack Compose, WorkManager | Chats, historial, recuperación, adjuntos y actividad persistente |
 | Nativo Android | C, JNI, CMake, NDK | Puente nativo, registro dinámico y endurecimiento del binario |
 | Datos | PostgreSQL 16, pgvector | Base preparada para usuarios, RAG, auditoría y métricas |
 | Aislamiento | Docker CLI, contenedores desechables | Validación opcional de Python, JavaScript y Bash |
+| APK de usuarios | Worker sin socket Docker, plantilla fija | Cola limitada, firma separada y descarga temporal |
 | Operación | Docker Compose, Nginx, Certbot, Bash | Despliegue, TLS, respaldos, actualización y rollback |
 
 ## 🖥️ Requisitos de VPS
@@ -118,11 +125,22 @@ La primera ejecución:
 1. Instala Android SDK, NDK, CMake y Gradle en `/opt/nexora-ai`.
 2. Crea una sola keystore en `/opt/nexora-ai/secrets/android-release.keystore`.
 3. Guarda las credenciales con permisos `600` fuera de Git.
-4. Compila y publica localmente `NexoraAI-0.5.1.apk` en `/opt/nexora-ai/releases`.
+4. Compila, firma V1+V2+V3 y publica `NexoraAI-0.6.0.apk`, el alias estable y `latest.json`.
 
 Las ejecuciones siguientes reutilizan SDK, dependencias, caché y keystore. **Respalda la keystore y su archivo de credenciales**: perderlos impide actualizar instalaciones firmadas anteriormente.
 
 Guía completa: [Compilar Android en VPS](docs/ANDROID-BUILD-VPS.md).
+
+Después del primer despliegue de la versión 0.6.0, el manifiesto y el alias estable se actualizan
+al finalizar cada build. No hay que editar `.env.production` ni reiniciar la API.
+
+Para activar una sola vez las compilaciones solicitadas desde el chat:
+
+```bash
+sudo nexora user-builds-enable
+```
+
+Detalles y límites: [Chats persistentes y APK temporales](docs/DURABLE-CHAT-AND-USER-BUILDS.md).
 
 ## 🔄 Actualizar Nexora AI
 

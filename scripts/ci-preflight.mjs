@@ -23,15 +23,30 @@ const requiredFiles = [
   "src/app/download/route.ts",
   "src/app/api/mobile/chat/route.ts",
   "src/app/api/mobile/chat/stream/route.ts",
+  "src/app/api/mobile/chat/jobs/route.ts",
+  "src/app/api/mobile/chat/jobs/[id]/route.ts",
+  "src/app/api/mobile/builds/route.ts",
+  "src/app/api/mobile/builds/[id]/route.ts",
+  "src/app/api/mobile/builds/[id]/download/route.ts",
   "src/lib/agent.ts",
+  "src/lib/android-builds.ts",
+  "src/lib/android-build-request.ts",
+  "src/lib/android-release.ts",
+  "src/lib/chat-jobs.ts",
+  "src/lib/db.ts",
   "src/lib/mobile-chat.ts",
   "scripts/mobile-chat-contract.test.mjs",
+  "scripts/durable-jobs-contract.test.mjs",
+  "scripts/durable-jobs-db.integration.mjs",
   "scripts/vps-healthcheck.test.sh",
   "scripts/vps-update-contract.test.sh",
   "src/lib/rate-limit.ts",
   "src/lib/sandbox.ts",
   "sandbox/Dockerfile",
   "sandbox/server.mjs",
+  "build-worker/Dockerfile",
+  "build-worker/worker.mjs",
+  "build-worker/template/app/build.gradle.kts",
   `${androidBase}/app/build.gradle.kts`,
   `${androidBase}/app/src/main/AndroidManifest.xml`,
   `${androidBase}/app/src/debug/res/xml/network_security_config.xml`,
@@ -41,6 +56,7 @@ const requiredFiles = [
   `${androidPackage}/ApiClient.kt`,
   `${androidPackage}/ChatComponents.kt`,
   `${androidPackage}/ChatStore.kt`,
+  `${androidPackage}/DurableWork.kt`,
   `${androidPackage}/LegalComponents.kt`,
   `${androidPackage}/MessageComposer.kt`,
   `${androidPackage}/Models.kt`,
@@ -50,12 +66,14 @@ const requiredFiles = [
   "deploy/scripts/bootstrap-vps.sh",
   "deploy/scripts/nexora-vps.sh",
   "deploy/scripts/android-builder.sh",
+  "deploy/scripts/user-build-keystore.sh",
   "deploy/scripts/platform-check.sh",
   "deploy/scripts/verify-vps.sh",
   "deploy/nginx/nexoraia-vps.conf",
   "docs/README-INSTALL.md",
   "docs/README-UPDATE.md",
   "docs/ANDROID-BUILD-VPS.md",
+  "docs/DURABLE-CHAT-AND-USER-BUILDS.md",
   "docs/SUPPORT-MATRIX.md",
   "docs/SANDBOX.md",
   "docs/TROUBLESHOOTING.md",
@@ -90,7 +108,8 @@ function excludes(file, tokens) {
 }
 
 const pkg = JSON.parse(content("package.json") || "{}");
-if (pkg.version !== "0.5.1") errors.push("package.json version must be 0.5.1");
+if (pkg.version !== "0.6.0") errors.push("package.json version must be 0.6.0");
+if (pkg.dependencies?.pg !== "^8.16.3") errors.push("pg must remain pinned to the reviewed 8.16 line");
 if (pkg.dependencies?.next !== "16.3.0") errors.push("Next.js must remain on reviewed 16.3.0");
 if (pkg.dependencies?.react !== "19.2.8") errors.push("React must remain on reviewed 19.2.8");
 
@@ -114,8 +133,23 @@ includes("src/app/api/mobile/chat/stream/route.ts", [
   "onProgress",
   "X-Accel-Buffering",
 ]);
+includes("src/app/api/mobile/chat/jobs/route.ts", ["after", "runChatJobInBackground", "status: 202"]);
+includes("src/lib/chat-jobs.ts", ["chat_jobs", "access_token_hash", "make_interval", "runAgent"]);
+includes("src/lib/db.ts", ["DATABASE_URL", "android_build_jobs", "chat_jobs"]);
+includes("src/lib/android-builds.ts", [
+  "ENABLE_USER_ANDROID_BUILDS",
+  "USER_BUILD_MAX_PER_HOUR",
+  "USER_BUILD_RATE_LIMIT_SALT",
+  "expiresAt",
+]);
+includes("src/app/api/mobile/builds/[id]/download/route.ts", [
+  "Cache-Control",
+  "no-store",
+  "buildRoot",
+]);
 includes("src/lib/agent.ts", [
   "AgentProgress",
+  "modeModel || roleModel",
   "progressStageForRole",
   "validateGeneratedCode",
   "trace",
@@ -147,11 +181,14 @@ includes("sandbox/server.mjs", [
 ]);
 
 includes(`${androidBase}/app/build.gradle.kts`, [
-  'versionCode = 7',
-  'versionName = "0.5.1"',
+  'versionCode = 8',
+  'versionName = "0.6.0"',
   '"armeabi-v7a", "arm64-v8a", "x86", "x86_64"',
   "externalNativeBuild",
   "isMinifyEnabled = true",
+  "enableV1Signing = true",
+  "enableV2Signing = true",
+  "enableV3Signing = true",
 ]);
 includes(".gitignore", [
   `${androidBase}/app/.cxx`,
@@ -176,6 +213,9 @@ includes(`${androidPackage}/Models.kt`, [
   "AgentProgress",
   "elapsedMs",
   "CodeValidationSummary",
+  "ASSISTANT",
+  "AndroidBuildArtifact",
+  "RequestStatus",
 ]);
 includes(`${androidPackage}/NexoraApp.kt`, [
   "thinkingElapsedMs",
@@ -186,6 +226,13 @@ includes(`${androidPackage}/NexoraApp.kt`, [
   "AssistantThinking",
 ]);
 includes(`${androidPackage}/ChatStore.kt`, ["KEY_PROJECTS", "isPinned", "codeValidation"]);
+includes(`${androidPackage}/DurableWork.kt`, [
+  "WorkManager",
+  "ExistingWorkPolicy.KEEP",
+  "NetworkType.CONNECTED",
+  "PendingWorkStore",
+  "Result.retry()",
+]);
 includes(`${androidPackage}/LegalComponents.kt`, ["Términos y condiciones", "Aviso de privacidad"]);
 includes(`${androidBase}/app/src/main/res/xml/network_security_config.xml`, [
   'cleartextTrafficPermitted="false"',
@@ -216,13 +263,19 @@ includes("docker-compose.vps.yml", [
   "/var/run/docker.sock:/var/run/docker.sock",
   "pgvector/pgvector:pg16",
   "127.0.0.1:3000:3000",
+  'profiles: ["user-builds"]',
+  "android-build-worker",
+  "/var/lib/nexora-ai/releases:ro",
+  "cap_drop",
 ]);
 includes(".env.vps.example", [
-  "APP_VERSION=0.5.1",
+  "APP_VERSION=0.6.0",
   "ANDROID_APK_URL=",
   "ALLOW_CODE_EXECUTION=false",
   "SANDBOX_RUNNER_TOKEN=",
   "SANDBOX_MAX_CONCURRENT_JOBS=2",
+  "ENABLE_USER_ANDROID_BUILDS=false",
+  "USER_BUILD_MAX_PER_HOUR=3",
 ]);
 includes("deploy/scripts/android-builder.sh", [
   "android-release.keystore",
@@ -231,12 +284,17 @@ includes("deploy/scripts/android-builder.sh", [
   "TOOLS_SHA256",
   "GRADLE_SHA256",
   "assembleRelease",
+  "--v1-signing-enabled true",
+  "NexoraAI-latest.apk",
+  "latest.json",
+  "publish_file_atomically",
 ]);
 includes("deploy/scripts/bootstrap-vps.sh", [
   "download.docker.com/linux",
   "docker-compose-plugin",
   "sha256sum --check",
   "/opt/nexora-ai/state",
+  "user-build-keystore.sh",
 ]);
 includes("deploy/scripts/nexora-vps.sh", [
   "update)",
@@ -246,6 +304,8 @@ includes("deploy/scripts/nexora-vps.sh", [
   "flock --nonblock",
   "no se reinició ningún contenedor",
   "rollback automático",
+  "la función volvió a quedar desactivada",
+  "artefactos y enlaces eliminados",
 ]);
 includes("deploy/scripts/verify-vps.sh", [
   "wait_for_command",
@@ -266,7 +326,21 @@ includes("deploy/nginx/nexoraia-vps.conf", [
   "limit_req_zone",
   "client_max_body_size 40M",
   "proxy_buffering off",
+  "X-Nexora-Request-Token",
+  "access_log off",
 ]);
+includes("build-worker/worker.mjs", [
+  "for update skip locked",
+  "interval '1 hour'",
+  "V1",
+  "V2",
+  "V3",
+  "Unsafe Android build job path",
+  "source_content = ''",
+  "NEXORA_EXTERNAL_APK_SIGNING",
+  "env:ANDROID_KEYSTORE_PASSWORD",
+]);
+includes("src/app/download/route.ts", ["release?.downloadUrl"]);
 
 includes(".github/workflows/android-ci.yml", [
   "lib/$ABI/libnexora.so",

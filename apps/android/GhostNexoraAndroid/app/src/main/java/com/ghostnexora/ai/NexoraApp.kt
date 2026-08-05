@@ -1,5 +1,6 @@
 package com.ghostnexora.ai
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -34,15 +35,18 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +65,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.UUID
 
 @Composable
 fun NexoraRoot() {
@@ -73,11 +78,12 @@ private fun NexoraChatApp() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val store = remember { ChatStore(context.applicationContext) }
+    val pendingWork = remember { PendingWorkStore(context.applicationContext) }
     val projects = remember { mutableStateListOf<ChatProject>().apply { addAll(store.loadProjects()) } }
     val sessions = remember {
         mutableStateListOf<ChatSession>().apply {
             addAll(store.loadSessions())
-            if (isEmpty()) add(ChatSession())
+            if (isEmpty()) add(ChatSession(model = NexoraModel.ASSISTANT))
         }
     }
     var activeSessionId by rememberSaveable { mutableStateOf(sessions.first().id) }
@@ -95,6 +101,10 @@ private fun NexoraChatApp() {
     var legalDocument by remember { mutableStateOf<LegalDocument?>(null) }
     var projectDialogVisible by remember { mutableStateOf(false) }
     var projectName by rememberSaveable { mutableStateOf("") }
+    var historyRevision by remember { mutableIntStateOf(1) }
+    var buildMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var buildAppName by rememberSaveable { mutableStateOf("") }
+    var userBuildsEnabled by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
@@ -123,7 +133,6 @@ private fun NexoraChatApp() {
     }
 
     fun selectSession(session: ChatSession) {
-        if (loading) return
         persistCurrent()
         activeSessionId = session.id
         selectedModel = session.model
@@ -133,18 +142,28 @@ private fun NexoraChatApp() {
         messages.addAll(session.messages)
         attachments.clear()
         thinkingProgress.clear()
+        thinkingProgress.addAll(
+            session.messages.lastOrNull {
+                it.requestStatus == RequestStatus.QUEUED ||
+                    it.requestStatus == RequestStatus.PROCESSING
+            }?.trace.orEmpty(),
+        )
+        loading = session.messages.any {
+            it.requestStatus == RequestStatus.QUEUED ||
+                it.requestStatus == RequestStatus.PROCESSING
+        }
+        requestStartedAt = session.messages.lastOrNull { it.requestId != null }?.createdAt ?: 0L
         prompt = ""
         composerPanel = null
         scope.launch { drawerState.close() }
     }
 
     fun createNewChat(projectId: String?) {
-        if (loading) return
         persistCurrent()
-        val session = ChatSession(projectId = projectId)
+        val session = ChatSession(projectId = projectId, model = NexoraModel.ASSISTANT)
         sessions.add(0, session)
         activeSessionId = session.id
-        selectedModel = NexoraModel.AUTO
+        selectedModel = NexoraModel.ASSISTANT
         intelligence = IntelligenceLevel.MEDIUM
         validateCode = false
         messages.clear()
@@ -171,13 +190,12 @@ private fun NexoraChatApp() {
         if (loading && session.id == activeSessionId) return
         val wasActive = session.id == activeSessionId
         sessions.removeAll { it.id == session.id }
-        if (sessions.isEmpty()) sessions.add(ChatSession())
+        if (sessions.isEmpty()) sessions.add(ChatSession(model = NexoraModel.ASSISTANT))
         if (wasActive) selectSession(sessions.first())
         saveAll()
     }
 
     fun deleteProject(project: ChatProject) {
-        if (loading) return
         projects.removeAll { it.id == project.id }
         sessions.indices.forEach { index ->
             if (sessions[index].projectId == project.id) {
@@ -204,6 +222,56 @@ private fun NexoraChatApp() {
         saveAll()
     }
 
+    DisposableEffect(store) {
+        val observer = store.observe { historyRevision += 1 }
+        onDispose { observer.close() }
+    }
+
+    LaunchedEffect(Unit) {
+        DurableWorkScheduler.resumeAll(context.applicationContext)
+        val release = withContext(Dispatchers.IO) {
+            runCatching { ApiClient.getLatestMobileRelease() }.getOrNull()
+        }
+        userBuildsEnabled = release?.userBuildsEnabled == true
+        if (release != null && release.versionCode > BuildConfig.VERSION_CODE) {
+            val result = snackbarHostState.showSnackbar(
+                message = "Nexora AI ${release.version} está disponible",
+                actionLabel = "Descargar",
+                withDismissAction = true,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(release.downloadUrl)))
+            }
+        }
+    }
+
+    LaunchedEffect(historyRevision) {
+        val refreshedSessions = store.loadSessions()
+        val refreshedProjects = store.loadProjects()
+        sessions.clear()
+        sessions.addAll(refreshedSessions.ifEmpty { listOf(ChatSession(model = NexoraModel.ASSISTANT)) })
+        projects.clear()
+        projects.addAll(refreshedProjects)
+        val active = sessions.firstOrNull { it.id == activeSessionId } ?: sessions.first()
+        if (active.id != activeSessionId) activeSessionId = active.id
+        messages.clear()
+        messages.addAll(active.messages)
+        selectedModel = active.model
+        intelligence = active.intelligence
+        validateCode = active.validateCode
+        val pending = active.messages.lastOrNull {
+            it.requestStatus == RequestStatus.QUEUED ||
+                it.requestStatus == RequestStatus.PROCESSING
+        }
+        loading = pending != null
+        thinkingProgress.clear()
+        thinkingProgress.addAll(pending?.trace.orEmpty())
+        requestStartedAt = pending?.createdAt ?: 0L
+        if (!loading) {
+            thinkingElapsedMs = active.messages.lastOrNull()?.elapsedMs ?: 0L
+        }
+    }
+
     LaunchedEffect(activeSessionId) {
         val session = sessions.firstOrNull { it.id == activeSessionId } ?: return@LaunchedEffect
         messages.clear()
@@ -211,10 +279,12 @@ private fun NexoraChatApp() {
     }
 
     LaunchedEffect(messages.size, loading, thinkingProgress.size) {
-        if (messages.isNotEmpty() || loading) {
-            listState.animateScrollToItem(
-                (messages.size + if (loading) 1 else 0).coerceAtLeast(1) - 1,
-            )
+        val renderedMessages = messages.count {
+            it.requestStatus != RequestStatus.QUEUED &&
+                it.requestStatus != RequestStatus.PROCESSING
+        } + if (loading) 1 else 0
+        if (renderedMessages > 0) {
+            listState.animateScrollToItem(renderedMessages - 1)
         }
     }
 
@@ -275,10 +345,10 @@ private fun NexoraChatApp() {
             val drawerFraction = if (maxWidth >= 600.dp) 0.58f else 0.9f
             ModalNavigationDrawer(
                 drawerState = drawerState,
-                gesturesEnabled = !loading,
+                gesturesEnabled = true,
                 drawerContent = {
                     ModalDrawerSheet(
-                        drawerContainerColor = Color(0xFF0B111B),
+                        drawerContainerColor = Color(0xFF111111),
                         modifier = Modifier
                             .fillMaxWidth(drawerFraction)
                             .statusBarsPadding()
@@ -308,7 +378,7 @@ private fun NexoraChatApp() {
                     topBar = {
                         TopAppBar(
                             colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = Color(0xFF080C13),
+                                containerColor = Color(0xFF0D0D0D),
                             ),
                             navigationIcon = {
                                 IconButton(onClick = { scope.launch { drawerState.open() } }) {
@@ -342,7 +412,7 @@ private fun NexoraChatApp() {
                                         tint = if (active?.isPinned == true) NexoraAccent else Color.White,
                                     )
                                 }
-                                IconButton(onClick = { createNewChat(active?.projectId) }, enabled = !loading) {
+                                IconButton(onClick = { createNewChat(active?.projectId) }) {
                                     Icon(Icons.Default.Add, contentDescription = "Nuevo chat")
                                 }
                             },
@@ -398,6 +468,10 @@ private fun NexoraChatApp() {
                                 val requestIntelligence = intelligence
                                 val requestValidation = validateCode
                                 val session = sessions.firstOrNull { it.id == activeSessionId }
+                                val conversationId = activeSessionId
+                                val requestId = UUID.randomUUID().toString()
+                                val requestToken = DurableWorkScheduler.newRequestToken()
+                                val startedAt = System.currentTimeMillis()
                                 messages.add(
                                     ChatMessage(
                                         role = "user",
@@ -405,44 +479,59 @@ private fun NexoraChatApp() {
                                         attachmentNames = sentAttachments.map { it.name },
                                     ),
                                 )
+                                messages.add(
+                                    ChatMessage(
+                                        id = "assistant-$requestId",
+                                        role = "assistant",
+                                        content = "",
+                                        createdAt = startedAt,
+                                        updatedAt = startedAt,
+                                        requestId = requestId,
+                                        requestStatus = RequestStatus.QUEUED,
+                                    ),
+                                )
                                 prompt = ""
                                 attachments.clear()
                                 thinkingProgress.clear()
                                 composerPanel = null
                                 loading = true
-                                requestStartedAt = System.currentTimeMillis()
+                                requestStartedAt = startedAt
                                 thinkingElapsedMs = 0L
                                 persistCurrent()
                                 scope.launch {
-                                    val response = withContext(Dispatchers.IO) {
-                                        ApiClient.postChat(
-                                            message = text,
-                                            model = requestModel,
-                                            intelligence = requestIntelligence,
-                                            attachments = sentAttachments,
-                                            conversationId = activeSessionId,
-                                            projectId = session?.projectId,
-                                            validateCode = requestValidation,
-                                            onProgress = { progress ->
-                                                scope.launch { thinkingProgress.add(progress) }
-                                            },
+                                    try {
+                                        withContext(Dispatchers.IO) {
+                                            pendingWork.saveChat(
+                                                PendingChatRequest(
+                                                    requestId = requestId,
+                                                    requestToken = requestToken,
+                                                    conversationId = conversationId,
+                                                    projectId = session?.projectId,
+                                                    message = text,
+                                                    model = requestModel,
+                                                    intelligence = requestIntelligence,
+                                                    validateCode = requestValidation,
+                                                    attachments = sentAttachments,
+                                                ),
+                                            )
+                                        }
+                                        DurableWorkScheduler.enqueueChat(
+                                            context.applicationContext,
+                                            requestId,
                                         )
+                                    } catch (error: Exception) {
+                                        val index = messages.indexOfFirst { it.requestId == requestId }
+                                        if (index >= 0) {
+                                            messages[index] = messages[index].copy(
+                                                content = error.message
+                                                    ?: "No se pudo guardar la solicitud pendiente.",
+                                                updatedAt = System.currentTimeMillis(),
+                                                requestStatus = RequestStatus.FAILED,
+                                            )
+                                        }
+                                        loading = false
+                                        persistCurrent()
                                     }
-                                    messages.add(
-                                        ChatMessage(
-                                            role = "assistant",
-                                            content = response.answer,
-                                            elapsedMs = response.elapsedMs.takeIf { it > 0 },
-                                            agentsUsed = response.agentsUsed,
-                                            provider = response.provider,
-                                            trace = response.trace,
-                                            codeValidation = response.codeValidation,
-                                        ),
-                                    )
-                                    loading = false
-                                    thinkingElapsedMs = response.elapsedMs
-                                    thinkingProgress.clear()
-                                    persistCurrent()
                                 }
                             },
                         )
@@ -455,15 +544,18 @@ private fun NexoraChatApp() {
                             .background(
                                 Brush.verticalGradient(
                                     listOf(
-                                        Color(0xFF07120F),
+                                        Color(0xFF10201B),
                                         NexoraBackground,
-                                        Color(0xFF090D17),
+                                        Color(0xFF0D0D0D),
                                     ),
                                 ),
                             ),
                     ) {
                         if (messages.isEmpty() && !loading) {
-                            EmptyChatState(modifier = Modifier.align(Alignment.Center))
+                            EmptyChatState(
+                                modifier = Modifier.align(Alignment.Center),
+                                onSuggestion = { prompt = it },
+                            )
                         } else {
                             LazyColumn(
                                 state = listState,
@@ -471,7 +563,31 @@ private fun NexoraChatApp() {
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 18.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                items(messages, key = { it.id }) { MessageBubble(it) }
+                                items(
+                                    messages.filterNot {
+                                        it.requestStatus == RequestStatus.QUEUED ||
+                                            it.requestStatus == RequestStatus.PROCESSING
+                                    },
+                                    key = { it.id },
+                                ) { message ->
+                                    MessageBubble(
+                                        message = message,
+                                        userBuildsEnabled = userBuildsEnabled,
+                                        onBuild = { selected ->
+                                            buildMessage = selected
+                                            buildAppName = sessions
+                                                .firstOrNull { it.id == activeSessionId }
+                                                ?.title
+                                                ?.takeUnless { it == "Nuevo chat" }
+                                                ?: "Aplicación Nexora"
+                                        },
+                                        onDownload = { url ->
+                                            context.startActivity(
+                                                Intent(Intent.ACTION_VIEW, Uri.parse(url)),
+                                            )
+                                        },
+                                    )
+                                }
                                 if (loading) {
                                     item {
                                         AssistantThinking(
@@ -513,6 +629,96 @@ private fun NexoraChatApp() {
                 },
                 dismissButton = {
                     TextButton(onClick = { projectDialogVisible = false }) { Text("Cancelar") }
+                },
+            )
+        }
+
+        buildMessage?.let { message ->
+            AlertDialog(
+                onDismissRequest = { buildMessage = null },
+                title = { Text("Crear APK temporal") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "Nexora compilará una aplicación nativa con esta respuesta. " +
+                                "El APK y su enlace se eliminarán una hora después de quedar listos.",
+                            color = NexoraMuted,
+                            fontSize = 13.sp,
+                        )
+                        OutlinedTextField(
+                            value = buildAppName,
+                            onValueChange = { buildAppName = it.take(48) },
+                            singleLine = true,
+                            label = { Text("Nombre de la aplicación") },
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = buildAppName.trim().length >= 2,
+                        onClick = {
+                            val cleanName = buildAppName.trim().take(48)
+                            val conversationId = activeSessionId
+                            val requestId = UUID.randomUUID().toString()
+                            val requestToken = DurableWorkScheduler.newRequestToken()
+                            val messageIndex = messages.indexOfFirst { it.id == message.id }
+                            val sourcePrompt = messages
+                                .take(messageIndex.coerceAtLeast(0))
+                                .lastOrNull { it.role == "user" }
+                                ?.content
+                                ?: "Crea una aplicación basada en la respuesta."
+                            val queuedArtifact = AndroidBuildArtifact(
+                                requestId = requestId,
+                                status = AndroidBuildStatus.QUEUED,
+                                appName = cleanName,
+                                progressLabel = "En cola para compilar",
+                            )
+                            if (messageIndex >= 0) {
+                                messages[messageIndex] = messages[messageIndex].copy(
+                                    updatedAt = System.currentTimeMillis(),
+                                    buildArtifact = queuedArtifact,
+                                )
+                                persistCurrent()
+                            }
+                            buildMessage = null
+                            scope.launch {
+                                try {
+                                    withContext(Dispatchers.IO) {
+                                        pendingWork.saveBuild(
+                                            PendingAndroidBuildRequest(
+                                                requestId = requestId,
+                                                requestToken = requestToken,
+                                                deviceId = pendingWork.deviceId(),
+                                                conversationId = conversationId,
+                                                messageId = message.id,
+                                                appName = cleanName,
+                                                accentColor = "#10A37F",
+                                                sourcePrompt = sourcePrompt,
+                                                sourceContent = message.content,
+                                            ),
+                                        )
+                                    }
+                                    DurableWorkScheduler.enqueueBuild(
+                                        context.applicationContext,
+                                        requestId,
+                                    )
+                                } catch (error: Exception) {
+                                    store.updateAndroidBuild(
+                                        conversationId,
+                                        message.id,
+                                        queuedArtifact.copy(
+                                            status = AndroidBuildStatus.FAILED,
+                                            progressLabel = "No se pudo iniciar la compilación",
+                                            error = error.message,
+                                        ),
+                                    )
+                                }
+                            }
+                        },
+                    ) { Text("Compilar") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { buildMessage = null }) { Text("Cancelar") }
                 },
             )
         }

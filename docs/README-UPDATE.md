@@ -18,6 +18,7 @@ Respalda periódicamente fuera de la VPS:
 - `/opt/nexora-ai/backups/`
 - `/opt/nexora-ai/secrets/android-release.keystore`
 - `/opt/nexora-ai/secrets/android-signing.env`
+- `/opt/nexora-ai/secrets/user-builds/`
 - `.env.production`
 
 ## Actualización automática
@@ -67,6 +68,30 @@ nexora restart
 nexora verify
 ```
 
+## Migración única de Nginx para 0.6
+
+La ruta temporal excluye su token del access log y el alias `NexoraAI-latest.apk` desactiva la
+caché. En una VPS que viene de 0.5, instala una sola vez la configuración nueva conservando un
+respaldo del sitio activo:
+
+```bash
+ls -l /etc/nginx/sites-enabled/
+sudo cp -a /etc/nginx/sites-available/ghost-nexora-ai \
+  /etc/nginx/sites-available/ghost-nexora-ai.pre-v060
+sudo cp deploy/nginx/nexoraia-vps.conf \
+  /etc/nginx/sites-available/ghost-nexora-ai
+sudo nginx -t
+sudo certbot --nginx --reinstall --redirect --non-interactive --agree-tos \
+  --email ghostnexora@gmail.com \
+  -d ghostnexoraai.duckdns.org \
+  -d apighostnexoraai.duckdns.org
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Si el enlace activo usa otro nombre, sustituye `ghost-nexora-ai` por ese archivo. Si alguna
+validación falla, restaura `.pre-v060` antes de recargar Nginx.
+
 ## Recompilar Android
 
 Cuando cambie `versionCode`, `versionName`, Kotlin, Compose, C o JNI:
@@ -75,11 +100,10 @@ Cuando cambie `versionCode`, `versionName`, Kotlin, Compose, C o JNI:
 sudo nexora android-release
 ```
 
-El compilador reutiliza la misma keystore, SDK, NDK, Gradle y dependencias. Actualiza `ANDROID_APK_URL` si cambia el nombre del APK y reinicia la app web:
-
-```bash
-nexora restart
-```
+El compilador reutiliza la misma keystore, SDK, NDK, Gradle y dependencias.
+El build 0.6.0 publica de forma atómica el APK versionado, `NexoraAI-latest.apk`, su SHA-256 y
+`latest.json`. La API lee el manifiesto montado en solo lectura, por lo que no debes editar
+`APP_VERSION`, `ANDROID_APK_URL` ni reiniciar contenedores después de compilar.
 
 ## Rollback
 

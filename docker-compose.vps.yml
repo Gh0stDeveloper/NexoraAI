@@ -3,7 +3,11 @@ services:
     build: .
     env_file: .env.production
     restart: unless-stopped
+    stop_grace_period: 30s
     ports: ["127.0.0.1:3000:3000"]
+    volumes:
+      - ${NEXORA_RELEASE_DIR:-/opt/nexora-ai/releases}:/var/lib/nexora-ai/releases:ro
+      - ${USER_BUILD_JOBS_PATH:-/var/lib/nexora-ai/android-build-jobs}:/var/lib/nexora-ai/android-build-jobs:ro
     depends_on: [postgres, ollama]
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
@@ -38,6 +42,29 @@ services:
       - ${SANDBOX_JOBS_PATH:-/var/lib/nexora-ai/sandbox-jobs}:/var/lib/nexora-ai/sandbox-jobs
     security_opt:
       - no-new-privileges:true
+  android-build-worker:
+    profiles: ["user-builds"]
+    build:
+      context: .
+      dockerfile: build-worker/Dockerfile
+    env_file: .env.production
+    restart: unless-stopped
+    depends_on: [postgres]
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    volumes:
+      - ${NEXORA_ANDROID_SDK_ROOT:-/opt/nexora-ai/android-sdk}:/opt/android-sdk:ro
+      - ${NEXORA_GRADLE_ROOT:-/opt/nexora-ai/gradle-8.10.2}:/opt/gradle:ro
+      - ${USER_BUILD_GRADLE_CACHE:-/opt/nexora-ai/cache/user-gradle}:/var/cache/nexora-gradle
+      - ${USER_BUILD_JOBS_PATH:-/var/lib/nexora-ai/android-build-jobs}:/var/lib/nexora-ai/android-build-jobs
+      - ${USER_BUILD_SECRET_DIR:-/opt/nexora-ai/secrets/user-builds}:/run/secrets/nexora:ro
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    mem_limit: 2g
+    cpus: 2.0
 volumes:
   postgres:
   ollama:
