@@ -112,7 +112,7 @@ ANDROID_KEY_PASSWORD
 
 El workflow reconstruye temporalmente la keystore en el runner y ejecuta `assembleRelease`. Cuando los cuatro secretos no existen, el job release se omite sin hacer fallar CI.
 
-La versión Android `0.5.0` utiliza como API oficial:
+La versión Android `0.5.1` utiliza como API oficial:
 
 ```txt
 https://apighostnexoraai.duckdns.org/

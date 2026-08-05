@@ -25,6 +25,7 @@ const requiredFiles = [
   "src/app/api/mobile/chat/stream/route.ts",
   "src/lib/agent.ts",
   "src/lib/mobile-chat.ts",
+  "scripts/mobile-chat-contract.test.mjs",
   "src/lib/rate-limit.ts",
   "src/lib/sandbox.ts",
   "sandbox/Dockerfile",
@@ -87,7 +88,7 @@ function excludes(file, tokens) {
 }
 
 const pkg = JSON.parse(content("package.json") || "{}");
-if (pkg.version !== "0.5.0") errors.push("package.json version must be 0.5.0");
+if (pkg.version !== "0.5.1") errors.push("package.json version must be 0.5.1");
 if (pkg.dependencies?.next !== "16.3.0") errors.push("Next.js must remain on reviewed 16.3.0");
 if (pkg.dependencies?.react !== "19.2.8") errors.push("React must remain on reviewed 19.2.8");
 
@@ -124,6 +125,11 @@ includes("src/lib/sandbox.ts", [
   "AbortSignal.timeout",
 ]);
 includes("src/lib/rate-limit.ts", ["RATE_LIMIT_PER_MINUTE", "checkMobileRateLimit"]);
+includes("src/lib/mobile-chat.ts", [
+  "mobileIdentifierSchema",
+  ".nullish()",
+  ".transform((identifier) => identifier ?? undefined)",
+]);
 includes("src/app/api/mobile/chat/stream/route.ts", ["checkMobileRateLimit", 'status: 429']);
 includes("sandbox/server.mjs", [
   '"--network"',
@@ -139,8 +145,8 @@ includes("sandbox/server.mjs", [
 ]);
 
 includes(`${androidBase}/app/build.gradle.kts`, [
-  'versionCode = 6',
-  'versionName = "0.5.0"',
+  'versionCode = 7',
+  'versionName = "0.5.1"',
   '"armeabi-v7a", "arm64-v8a", "x86", "x86_64"',
   "externalNativeBuild",
   "isMinifyEnabled = true",
@@ -152,7 +158,11 @@ includes(`${androidPackage}/ApiClient.kt`, [
   '"progress"',
   "elapsedMs",
   "projectId",
+  'projectId?.let { put("projectId", it) }',
   "validateCode",
+]);
+excludes(`${androidPackage}/ApiClient.kt`, [
+  '.put("projectId", projectId ?: JSONObject.NULL)',
 ]);
 includes(`${androidPackage}/Models.kt`, [
   "ChatProject",
@@ -202,7 +212,7 @@ includes("docker-compose.vps.yml", [
   "127.0.0.1:3000:3000",
 ]);
 includes(".env.vps.example", [
-  "APP_VERSION=0.5.0",
+  "APP_VERSION=0.5.1",
   "ANDROID_APK_URL=",
   "ALLOW_CODE_EXECUTION=false",
   "SANDBOX_RUNNER_TOKEN=",

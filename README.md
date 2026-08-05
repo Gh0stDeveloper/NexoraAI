@@ -22,7 +22,7 @@
 
 ---
 
-## ✨ Qué incluye la versión 0.5.0
+## ✨ Qué incluye la versión 0.5.1
 
 - 📱 Aplicación Android nativa con Kotlin y Jetpack Compose.
 - 🧠 Respuestas instantáneas o colaboración de 3, 4 y 6 agentes.
@@ -118,7 +118,7 @@ La primera ejecución:
 1. Instala Android SDK, NDK, CMake y Gradle en `/opt/nexora-ai`.
 2. Crea una sola keystore en `/opt/nexora-ai/secrets/android-release.keystore`.
 3. Guarda las credenciales con permisos `600` fuera de Git.
-4. Compila y publica localmente `NexoraAI-0.5.0.apk` en `/opt/nexora-ai/releases`.
+4. Compila y publica localmente `NexoraAI-0.5.1.apk` en `/opt/nexora-ai/releases`.
 
 Las ejecuciones siguientes reutilizan SDK, dependencias, caché y keystore. **Respalda la keystore y su archivo de credenciales**: perderlos impide actualizar instalaciones firmadas anteriormente.
 

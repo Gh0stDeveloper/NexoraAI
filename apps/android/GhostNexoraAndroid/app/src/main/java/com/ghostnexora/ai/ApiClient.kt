@@ -42,7 +42,9 @@ object ApiClient {
                 .put("intelligence", intelligence.wireValue)
                 .put("client", "android")
                 .put("conversationId", conversationId)
-                .put("projectId", projectId ?: JSONObject.NULL)
+                .apply {
+                    projectId?.let { put("projectId", it) }
+                }
                 .put("validateCode", validateCode)
                 .put(
                     "attachments",
