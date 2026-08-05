@@ -5,9 +5,14 @@ export async function GET() {
     ok: true,
     app: "Nexora AI",
     status: "ready",
-    version: process.env.APP_VERSION ?? "0.2.0-client-api-android",
+    version: process.env.APP_VERSION ?? "0.4.1-duckdns-production",
     provider: process.env.AI_PROVIDER ?? "ollama",
-    productionApiUrl: process.env.MOBILE_PRODUCTION_API_URL ?? "https://api.nexoraia.com/",
+    siteUrl:
+      process.env.NEXT_PUBLIC_SITE_URL ??
+      "https://ghostnexoraai.duckdns.org",
+    productionApiUrl:
+      process.env.MOBILE_PRODUCTION_API_URL ??
+      "https://apighostnexoraai.duckdns.org/",
     features: [
       "web-chat-client",
       "android-chat-client",

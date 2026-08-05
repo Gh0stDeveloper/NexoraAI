@@ -24,8 +24,8 @@ android {
         applicationId = "com.ghostnexora.ai"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4.0-insets-multiagent"
+        versionCode = 5
+        versionName = "0.4.1-duckdns-production"
 
         externalNativeBuild {
             cmake {

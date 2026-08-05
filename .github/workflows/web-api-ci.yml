@@ -19,9 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       APP_ENV: ci
-      NEXT_PUBLIC_SITE_URL: http://localhost:3000
-      NEXT_PUBLIC_API_URL: http://localhost:3000
-      MOBILE_PRODUCTION_API_URL: https://api.nexoraia.com/
+      NEXT_PUBLIC_SITE_URL: https://ghostnexoraai.duckdns.org
+      NEXT_PUBLIC_API_URL: https://apighostnexoraai.duckdns.org
+      MOBILE_PRODUCTION_API_URL: https://apighostnexoraai.duckdns.org/
       AI_PROVIDER: ollama
     steps:
       - name: Checkout

@@ -5,6 +5,7 @@ const root = process.cwd();
 const androidBase = 'apps/android/GhostNexoraAndroid';
 const androidPackage = `${androidBase}/app/src/main/java/com/ghostnexora/ai`;
 const androidRes = `${androidBase}/app/src/main/res`;
+const nativeConfig = `${androidBase}/app/src/main/cpp/native_config.c`;
 const requiredFiles = [
   'package.json',
   'Dockerfile',
@@ -37,7 +38,7 @@ const requiredFiles = [
   `${androidPackage}/Models.kt`,
   `${androidPackage}/NativeConfig.kt`,
   `${androidBase}/app/src/main/cpp/CMakeLists.txt`,
-  `${androidBase}/app/src/main/cpp/native_config.c`,
+  nativeConfig,
   `${androidRes}/values/colors.xml`,
   `${androidRes}/values/styles.xml`,
   `${androidRes}/drawable/nexora_splash_icon.xml`,
@@ -45,6 +46,7 @@ const requiredFiles = [
   `${androidRes}/mipmap-anydpi-v26/ic_launcher.xml`,
   `${androidRes}/mipmap-anydpi-v26/ic_launcher_round.xml`,
   'docs/android-multiagent-v04.md',
+  'docs/duckdns-vps.md',
   'deploy/nginx/nexoraia-vps.conf',
   'deploy/scripts/bootstrap-vps.sh',
   'deploy/scripts/verify-vps.sh',
@@ -104,9 +106,11 @@ if (fs.existsSync(packagePath)) {
 
 assertIncludes('.env.vps.example', [
   'APP_ENV=',
-  'NEXT_PUBLIC_SITE_URL=',
-  'NEXT_PUBLIC_API_URL=',
-  'MOBILE_PRODUCTION_API_URL=',
+  'PUBLIC_DOMAIN=ghostnexoraai.duckdns.org',
+  'API_DOMAIN=apighostnexoraai.duckdns.org',
+  'NEXT_PUBLIC_SITE_URL=https://ghostnexoraai.duckdns.org',
+  'NEXT_PUBLIC_API_URL=https://apighostnexoraai.duckdns.org',
+  'MOBILE_PRODUCTION_API_URL=https://apighostnexoraai.duckdns.org/',
   'AI_PROVIDER=',
   'OLLAMA_MODEL_PLANNER=',
   'OLLAMA_MODEL_SYNTHESIZER=',
@@ -123,7 +127,13 @@ assertIncludes('docker-compose.vps.yml', [
   '127.0.0.1:11434:11434',
   'pgvector/pgvector:pg16',
 ]);
-assertIncludes('src/app/page.tsx', ['/chat', '/docs', '/openapi.json', 'api.nexoraia.com']);
+assertIncludes('src/app/page.tsx', [
+  '/chat',
+  '/docs',
+  '/openapi.json',
+  'ghostnexoraai.duckdns.org',
+  'apighostnexoraai.duckdns.org',
+]);
 assertIncludes('src/app/chat/page.tsx', ['use client', 'fetch("/api/chat"', 'mode-chip', 'textarea']);
 assertIncludes('src/app/api/chat/route.ts', ['requestId', 'z.ZodError', 'runAgent']);
 assertIncludes('src/app/api/mobile/chat/route.ts', [
@@ -131,6 +141,11 @@ assertIncludes('src/app/api/mobile/chat/route.ts', [
   'intelligence',
   'conversationId',
   'runAgent',
+]);
+assertIncludes('src/app/api/mobile/status/route.ts', [
+  'ghostnexoraai.duckdns.org',
+  'apighostnexoraai.duckdns.org',
+  '0.4.1-duckdns-production',
 ]);
 assertIncludes('src/lib/agent.ts', [
   'OLLAMA_VISION_MODEL',
@@ -147,7 +162,8 @@ assertIncludes(`${androidBase}/app/build.gradle.kts`, [
   'core-splashscreen',
   'ANDROID_KEYSTORE_PATH',
   'isMinifyEnabled = true',
-  'versionCode = 4',
+  'versionCode = 5',
+  'versionName = "0.4.1-duckdns-production"',
 ]);
 assertExcludes(`${androidBase}/app/build.gradle.kts`, [
   'DEFAULT_API_BASE_URL',
@@ -195,10 +211,14 @@ assertIncludes(`${androidPackage}/ApiClient.kt`, [
   'X-Nexora-Client',
   '720_000',
 ]);
-assertIncludes(`${androidBase}/app/src/main/cpp/native_config.c`, [
+assertIncludes(nativeConfig, [
   'encoded_url',
   'XOR_KEY',
   'NativeConfig_apiBaseUrl',
+]);
+assertExcludes(nativeConfig, [
+  'https://apighostnexoraai.duckdns.org/',
+  'https://api.nexoraia.com/',
 ]);
 assertIncludes(`${androidRes}/values/styles.xml`, [
   'Theme.SplashScreen.IconBackground',
@@ -210,6 +230,33 @@ assertIncludes(`${androidRes}/mipmap-anydpi-v26/ic_launcher.xml`, [
   '@drawable/ic_nexora_foreground',
   '<monochrome',
 ]);
+assertIncludes('deploy/nginx/nexoraia-vps.conf', [
+  'server_name ghostnexoraai.duckdns.org;',
+  'server_name apighostnexoraai.duckdns.org;',
+  'Access-Control-Allow-Origin "https://ghostnexoraai.duckdns.org"',
+  'proxy_read_timeout 900s',
+]);
+assertIncludes('deploy/scripts/bootstrap-vps.sh', [
+  'certbot',
+  'python3-certbot-nginx',
+  'certbot.timer',
+]);
+assertIncludes('deploy/scripts/verify-vps.sh', [
+  'VERIFY_PUBLIC_DOMAINS',
+  'ghostnexoraai.duckdns.org',
+  'apighostnexoraai.duckdns.org',
+]);
+assertIncludes('docs/duckdns-vps.md', [
+  'ghostnexoraai.duckdns.org',
+  'apighostnexoraai.duckdns.org',
+  'ANDROID_KEYSTORE_BASE64',
+  'certbot --nginx',
+]);
+assertIncludes('.github/workflows/web-api-ci.yml', [
+  'NEXT_PUBLIC_SITE_URL: https://ghostnexoraai.duckdns.org',
+  'NEXT_PUBLIC_API_URL: https://apighostnexoraai.duckdns.org',
+  'MOBILE_PRODUCTION_API_URL: https://apighostnexoraai.duckdns.org/',
+]);
 assertIncludes('.github/workflows/android-ci.yml', [
   'assembleDebug',
   'ANDROID_KEYSTORE_BASE64',
@@ -219,6 +266,21 @@ assertIncludes('.github/workflows/android-ci.yml', [
   'ndk;27.0.12077973',
   'cmake;3.22.1',
 ]);
+
+const domainSensitiveFiles = [
+  '.env.vps.example',
+  'README.md',
+  'docs/ci-actions.md',
+  'docs/duckdns-vps.md',
+  'src/lib/env.ts',
+  'src/app/page.tsx',
+  'src/app/api/mobile/status/route.ts',
+  'deploy/nginx/nexoraia-vps.conf',
+  '.github/workflows/web-api-ci.yml',
+];
+for (const filePath of domainSensitiveFiles) {
+  assertExcludes(filePath, ['https://nexoraia.com', 'https://api.nexoraia.com']);
+}
 
 if (errors.length > 0) {
   console.error('NexoraAI CI preflight failed:');

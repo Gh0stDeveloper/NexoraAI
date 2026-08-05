@@ -7,9 +7,10 @@ const capabilities = [
 ];
 
 const productionChecks = [
-  ["VPS", "Docker Compose + Nginx + SSL"],
+  ["Web", "ghostnexoraai.duckdns.org"],
+  ["API", "apighostnexoraai.duckdns.org"],
   ["Modelo local", "Ollama / vLLM configurable"],
-  ["Android", "Debug APK siempre, release con secretos"],
+  ["Android", "Debug siempre, release con secretos"],
   ["CI", "Web, API, Docker, dataset y APK"],
 ];
 
@@ -55,8 +56,8 @@ export default function Page() {
             ))}
           </div>
           <p className="muted">
-            Los dominios pueden apuntarse después. La validación CI no depende
-            de que <code>nexoraia.com</code> o <code>api.nexoraia.com</code> ya existan.
+            Los dominios DuckDNS ya apuntan a la VPS. Nginx separa el panel
+            público de la API y Certbot habilita HTTPS para ambos hosts.
           </p>
         </aside>
       </section>
