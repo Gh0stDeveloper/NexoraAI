@@ -345,6 +345,7 @@ includes("src/app/download/route.ts", ["release?.downloadUrl"]);
 includes(".github/workflows/android-ci.yml", [
   "lib/$ABI/libnexora.so",
   "$ANDROID_HOME/build-tools/35.0.0/apksigner",
+  "--v3-signing-enabled true",
   "assembleDebug",
   "assembleRelease",
 ]);

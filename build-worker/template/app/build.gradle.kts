@@ -11,17 +11,6 @@ val generatedApplicationId = providers.gradleProperty("NEXORA_APPLICATION_ID")
 val generatedVersionCode = providers.gradleProperty("NEXORA_VERSION_CODE")
     .map(String::toInt)
     .orElse(1)
-val releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
-val releaseKeystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-val releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
-val releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
-val externalApkSigning = System.getenv("NEXORA_EXTERNAL_APK_SIGNING") == "true"
-val releaseSigningEnabled = listOf(
-    releaseKeystorePath,
-    releaseKeystorePassword,
-    releaseKeyAlias,
-    releaseKeyPassword,
-).all { !it.isNullOrBlank() } && !externalApkSigning
 
 android {
     namespace = "com.ghostnexora.generated"
@@ -35,28 +24,10 @@ android {
         versionName = "1.0"
     }
 
-    signingConfigs {
-        create("release") {
-            enableV1Signing = true
-            enableV2Signing = true
-            enableV3Signing = true
-            enableV4Signing = false
-            if (releaseSigningEnabled) {
-                storeFile = file(releaseKeystorePath!!)
-                storePassword = releaseKeystorePassword
-                keyAlias = releaseKeyAlias
-                keyPassword = releaseKeyPassword
-            }
-        }
-    }
-
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            if (releaseSigningEnabled) {
-                signingConfig = signingConfigs.getByName("release")
-            }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
         }
     }

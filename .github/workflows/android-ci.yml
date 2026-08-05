@@ -166,17 +166,32 @@ jobs:
             -alias nexora-user-builds \
             -keyalg RSA -keysize 2048 -validity 30 \
             -dname "CN=Nexora CI, O=Ghost Developer, C=MX"
-          ANDROID_KEYSTORE_PATH="$KEYSTORE" \
-          ANDROID_KEYSTORE_PASSWORD=ci-store-password \
-          ANDROID_KEY_ALIAS=nexora-user-builds \
-          ANDROID_KEY_PASSWORD=ci-key-password \
+          NEXORA_EXTERNAL_APK_SIGNING=true \
             gradle -p ../../../build-worker/template \
               assembleRelease --no-daemon --stacktrace
-          APK="$(find ../../../build-worker/template/app/build/outputs/apk/release -name '*.apk' | head -n 1)"
-          test -n "$APK"
+          UNSIGNED_APK="$(find ../../../build-worker/template/app/build/outputs/apk/release -name '*-unsigned.apk' | head -n 1)"
+          test -n "$UNSIGNED_APK"
+          ZIPALIGN="$ANDROID_HOME/build-tools/35.0.0/zipalign"
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          test -x "$APKSIGNER"
-          VERIFY="$("$APKSIGNER" verify --verbose "$APK")"
+          ALIGNED_APK="$RUNNER_TEMP/nexora-user-aligned.apk"
+          SIGNED_APK="$RUNNER_TEMP/nexora-user-signed.apk"
+          test -x "$ZIPALIGN" && test -x "$APKSIGNER"
+          "$ZIPALIGN" -p -f 4 "$UNSIGNED_APK" "$ALIGNED_APK"
+          ANDROID_KEYSTORE_PASSWORD=ci-store-password \
+          ANDROID_KEY_PASSWORD=ci-key-password \
+            "$APKSIGNER" sign \
+              --ks "$KEYSTORE" \
+              --ks-key-alias nexora-user-builds \
+              --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+              --key-pass env:ANDROID_KEY_PASSWORD \
+              --v1-signing-enabled true \
+              --v2-signing-enabled true \
+              --v3-signing-enabled true \
+              --v4-signing-enabled false \
+              --out "$SIGNED_APK" \
+              "$ALIGNED_APK"
+          VERIFY="$("$APKSIGNER" verify --verbose "$SIGNED_APK")"
+          printf '%s\n' "$VERIFY"
           grep -Eiq 'Verified using v1 scheme.*: true' <<< "$VERIFY"
           grep -Eiq 'Verified using v2 scheme.*: true' <<< "$VERIFY"
           grep -Eiq 'Verified using v3 scheme.*: true' <<< "$VERIFY"
