@@ -147,7 +147,9 @@ jobs:
         if: steps.signing.outputs.enabled == 'true'
         run: |
           APK="$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)"
-          VERIFY="$(apksigner verify --verbose "$APK")"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          test -x "$APKSIGNER"
+          VERIFY="$("$APKSIGNER" verify --verbose "$APK")"
           grep -Eiq 'Verified using v1 scheme.*: true' <<< "$VERIFY"
           grep -Eiq 'Verified using v2 scheme.*: true' <<< "$VERIFY"
           grep -Eiq 'Verified using v3 scheme.*: true' <<< "$VERIFY"
@@ -172,7 +174,9 @@ jobs:
               assembleRelease --no-daemon --stacktrace
           APK="$(find ../../../build-worker/template/app/build/outputs/apk/release -name '*.apk' | head -n 1)"
           test -n "$APK"
-          VERIFY="$(apksigner verify --verbose "$APK")"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          test -x "$APKSIGNER"
+          VERIFY="$("$APKSIGNER" verify --verbose "$APK")"
           grep -Eiq 'Verified using v1 scheme.*: true' <<< "$VERIFY"
           grep -Eiq 'Verified using v2 scheme.*: true' <<< "$VERIFY"
           grep -Eiq 'Verified using v3 scheme.*: true' <<< "$VERIFY"
