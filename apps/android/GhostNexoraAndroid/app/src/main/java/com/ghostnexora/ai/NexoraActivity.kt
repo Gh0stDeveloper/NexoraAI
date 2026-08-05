@@ -16,7 +16,7 @@ class NexoraActivity : ComponentActivity() {
 
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(Color.rgb(6, 8, 14)),
+            navigationBarStyle = SystemBarStyle.dark(Color.rgb(13, 13, 13)),
         )
 
         splashScreen.setOnExitAnimationListener { provider ->

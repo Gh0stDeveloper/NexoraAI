@@ -30,11 +30,14 @@ if [[ ! -f "$ENV_FILE" ]]; then
 fi
 
 compose() {
+  local -a command=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
   if grep -Eq '^ALLOW_CODE_EXECUTION=true$' "$ENV_FILE"; then
-    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" --profile sandbox "$@"
-  else
-    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+    command+=(--profile sandbox)
   fi
+  if grep -Eq '^ENABLE_USER_ANDROID_BUILDS=true$' "$ENV_FILE"; then
+    command+=(--profile user-builds)
+  fi
+  "${command[@]}" "$@"
 }
 
 acquire_operation_lock() {
@@ -69,11 +72,134 @@ require_positive_integer() {
 require_non_negative_integer NEXORA_BACKUP_RETENTION_DAYS "$BACKUP_RETENTION_DAYS"
 require_positive_integer NEXORA_COMPOSE_WAIT_TIMEOUT_SECONDS "$COMPOSE_WAIT_TIMEOUT_SECONDS"
 
-stop_disabled_sandbox() {
+stop_disabled_optional_services() {
   if ! grep -Eq '^ALLOW_CODE_EXECUTION=true$' "$ENV_FILE"; then
     docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" \
       --profile sandbox stop sandbox >/dev/null 2>&1 || true
   fi
+  if ! grep -Eq '^ENABLE_USER_ANDROID_BUILDS=true$' "$ENV_FILE"; then
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" \
+      --profile user-builds stop android-build-worker >/dev/null 2>&1 || true
+  fi
+}
+
+prepare_user_build_runtime() {
+  if ! grep -Eq '^ENABLE_USER_ANDROID_BUILDS=true$' "$ENV_FILE"; then
+    return 0
+  fi
+  if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "x86_64" ]]; then
+    printf 'ERROR: el compilador temporal de usuarios requiere una VPS Linux AMD64.\n' >&2
+    return 1
+  fi
+  if [[ -x /opt/nexora-ai/gradle-8.10.2/bin/gradle ]] && \
+     [[ -x /opt/nexora-ai/android-sdk/build-tools/35.0.0/apksigner ]] && \
+     [[ -d /opt/nexora-ai/cache/user-gradle ]] && \
+     [[ -d /var/lib/nexora-ai/android-build-jobs ]] && \
+     [[ "$(stat -c %u /opt/nexora-ai/cache/user-gradle)" == "1001" ]] && \
+     [[ "$(stat -c %u /var/lib/nexora-ai/android-build-jobs)" == "1001" ]]; then
+    if [[ "$(id -u)" -ne 0 ]] || {
+      [[ -f /opt/nexora-ai/secrets/user-builds/android-user-builds.keystore ]] &&
+      [[ -f /opt/nexora-ai/secrets/user-builds/android-user-signing.env ]]
+    }; then
+      return 0
+    fi
+  fi
+  if [[ "$(id -u)" -ne 0 ]]; then
+    printf 'ERROR: falta preparar el compilador de usuarios; ejecuta `sudo nexora user-builds-enable`.\n' >&2
+    return 1
+  fi
+  if [[ ! -x /opt/nexora-ai/gradle-8.10.2/bin/gradle ]] || \
+     [[ ! -x /opt/nexora-ai/android-sdk/build-tools/35.0.0/apksigner ]]; then
+    printf 'Preparando el SDK y Gradle compartidos mediante el compilador oficial...\n'
+    bash "$ROOT/deploy/scripts/android-builder.sh" || return $?
+  fi
+  mkdir -p /opt/nexora-ai/cache/user-gradle /var/lib/nexora-ai/android-build-jobs
+  chown 1001:1001 /opt/nexora-ai/cache/user-gradle /var/lib/nexora-ai/android-build-jobs
+  bash "$ROOT/deploy/scripts/user-build-keystore.sh"
+}
+
+set_env_value() {
+  local key="$1" value="$2" temporary="$ENV_FILE.tmp.$$"
+  awk -v target="$key" -v replacement="$value" '
+    BEGIN { replaced = 0 }
+    index($0, target "=") == 1 {
+      print target "=" replacement
+      replaced = 1
+      next
+    }
+    { print }
+    END {
+      if (!replaced) print target "=" replacement
+    }
+  ' "$ENV_FILE" > "$temporary"
+  chmod --reference="$ENV_FILE" "$temporary"
+  mv -f -- "$temporary" "$ENV_FILE"
+}
+
+enable_user_builds() {
+  if [[ "$(id -u)" -ne 0 ]]; then
+    printf 'ERROR: ejecuta `sudo nexora user-builds-enable`.\n' >&2
+    exit 3
+  fi
+  set_env_value ENABLE_USER_ANDROID_BUILDS true
+  if ! grep -Eq '^USER_BUILD_RATE_LIMIT_SALT=[a-f0-9]{64}$' "$ENV_FILE"; then
+    set_env_value USER_BUILD_RATE_LIMIT_SALT "$(openssl rand -hex 32)"
+  fi
+  if ! prepare_user_build_runtime || ! deploy_revision false; then
+    set_env_value ENABLE_USER_ANDROID_BUILDS false
+    stop_disabled_optional_services
+    compose up -d --no-deps --force-recreate app >/dev/null 2>&1 || true
+    printf 'ERROR: no se pudo activar el compilador temporal; la función volvió a quedar desactivada.\n' >&2
+    exit 1
+  fi
+  printf 'Compilaciones temporales de usuarios activadas y verificadas.\n'
+}
+
+disable_user_builds() {
+  if [[ "$(id -u)" -ne 0 ]]; then
+    printf 'ERROR: ejecuta `sudo nexora user-builds-disable`.\n' >&2
+    exit 3
+  fi
+  local jobs_path
+  jobs_path="$(awk -F= '
+    $1 == "USER_BUILD_JOBS_PATH" { value = substr($0, index($0, "=") + 1) }
+    END { print value }
+  ' "$ENV_FILE")"
+  jobs_path="${jobs_path%\"}"
+  jobs_path="${jobs_path#\"}"
+  jobs_path="${jobs_path:-/var/lib/nexora-ai/android-build-jobs}"
+  jobs_path="$(realpath -m -- "$jobs_path")"
+  case "$jobs_path" in
+    /var/lib/nexora-ai/*|/opt/nexora-ai/*) ;;
+    *)
+      printf 'ERROR: USER_BUILD_JOBS_PATH no está dentro de una ruta segura de Nexora.\n' >&2
+      exit 4
+      ;;
+  esac
+  set_env_value ENABLE_USER_ANDROID_BUILDS false
+  stop_disabled_optional_services
+  compose up -d --no-deps --force-recreate app
+  if [[ -d "$jobs_path" ]]; then
+    find "$jobs_path" -mindepth 1 -delete
+  fi
+  compose exec -T postgres psql -v ON_ERROR_STOP=1 -U nexora -d nexora_ai <<'SQL'
+do $cleanup$
+begin
+  if to_regclass('public.android_build_jobs') is not null then
+    update android_build_jobs
+       set status = 'expired',
+           progress_label = 'Enlace expirado',
+           output_path = null,
+           source_prompt = '',
+           source_content = '',
+           updated_at = now()
+     where status <> 'expired';
+  end if;
+end
+$cleanup$;
+SQL
+  bash "$VERIFY_SCRIPT"
+  printf 'Compilaciones temporales desactivadas; artefactos y enlaces eliminados.\n'
 }
 
 cleanup_old_backups() {
@@ -129,7 +255,15 @@ deploy_revision() {
       compose build sandbox || return $?
     fi
   fi
-  stop_disabled_sandbox
+  if grep -Eq '^ENABLE_USER_ANDROID_BUILDS=true$' "$ENV_FILE"; then
+    prepare_user_build_runtime || return $?
+    if [[ "$pull_build" == "true" ]]; then
+      compose build --pull android-build-worker || return $?
+    else
+      compose build android-build-worker || return $?
+    fi
+  fi
+  stop_disabled_optional_services
   compose_up_and_wait || return $?
   bash "$VERIFY_SCRIPT" || return $?
 }
@@ -139,6 +273,10 @@ show_deployment_diagnostics() {
   compose ps >&2 || true
   printf '\nÚltimas 120 líneas de la aplicación:\n' >&2
   compose logs --no-color --tail=120 app >&2 || true
+  if grep -Eq '^ENABLE_USER_ANDROID_BUILDS=true$' "$ENV_FILE"; then
+    printf '\nÚltimas 80 líneas del compilador efímero:\n' >&2
+    compose logs --no-color --tail=80 android-build-worker >&2 || true
+  fi
 }
 
 refresh_cli() {
@@ -243,10 +381,12 @@ case "${1:-help}" in
   stop) acquire_operation_lock; compose stop ;;
   restart)
     acquire_operation_lock
-    stop_disabled_sandbox
+    stop_disabled_optional_services
     compose restart
     ;;
   android-release) acquire_operation_lock; bash "$ROOT/deploy/scripts/android-builder.sh" ;;
+  user-builds-enable) acquire_operation_lock; enable_user_builds ;;
+  user-builds-disable) acquire_operation_lock; disable_user_builds ;;
   cleanup)
     acquire_operation_lock
     docker container prune --force --filter "until=24h"
@@ -263,6 +403,8 @@ case "${1:-help}" in
       '  logs [líneas]    Sigue los logs' \
       '  verify           Comprueba servicio y dominios' \
       '  android-release  Compila APK release en VPS AMD64' \
+      '  user-builds-enable  Activa el compilador temporal aislado' \
+      '  user-builds-disable Desactiva el compilador temporal' \
       '  cleanup          Elimina contenedores e imágenes temporales antiguas'
     ;;
 esac

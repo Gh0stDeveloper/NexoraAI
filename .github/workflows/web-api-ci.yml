@@ -17,12 +17,27 @@ jobs:
   web:
     name: Build and validate Next.js API
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: nexora_ai_ci
+          POSTGRES_USER: nexora
+          POSTGRES_PASSWORD: nexora-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nexora -d nexora_ai_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     env:
       APP_ENV: ci
       NEXT_PUBLIC_SITE_URL: https://ghostnexoraai.duckdns.org
       NEXT_PUBLIC_API_URL: https://apighostnexoraai.duckdns.org
       MOBILE_PRODUCTION_API_URL: https://apighostnexoraai.duckdns.org/
       AI_PROVIDER: ollama
+      DATABASE_URL: postgresql://nexora:nexora-ci-password@127.0.0.1:5432/nexora_ai_ci
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,6 +55,9 @@ jobs:
 
       - name: Validate mobile API contracts
         run: npm run test:contracts
+
+      - name: Validate durable PostgreSQL jobs
+        run: node --no-warnings --experimental-strip-types --test scripts/durable-jobs-db.integration.mjs
 
       - name: Validate repository structure
         run: npm run validate:repo

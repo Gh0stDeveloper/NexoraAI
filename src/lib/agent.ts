@@ -4,6 +4,7 @@ import {
 } from "@/lib/sandbox";
 
 export type AgentMode =
+  | "assistant"
   | "auto"
   | "fullstack"
   | "android"
@@ -59,7 +60,7 @@ type ProviderErrorCode =
   | "empty"
   | "unknown";
 
-type AgentResult = {
+export type AgentResult = {
   agent: AgentMode;
   answer: string;
   safety: "allowed" | "blocked";
@@ -113,6 +114,8 @@ const abusePattern =
   /(phishing|robar credenciales|credential theft|malware|ransomware|exfiltrar|exfiltrate|stealer|bypass\s+auth|evadir antivirus|keylogger)/i;
 
 const modeGuidance: Record<AgentMode, string> = {
+  assistant:
+    "Conversa de forma natural, cálida y útil sobre temas cotidianos o generales. No fuerces un enfoque de programación; pregunta solo cuando falte información esencial.",
   auto: "Analiza la solicitud y elige el enfoque técnico más adecuado.",
   fullstack:
     "Prioriza arquitectura web, frontend, API, base de datos, validación y despliegue.",
@@ -244,7 +247,7 @@ function modelForRole(
 
   const roleModel = process.env[role.envKey];
   const modeModel = process.env[`OLLAMA_MODEL_${mode.toUpperCase()}`];
-  return roleModel || modeModel || process.env.OLLAMA_MODEL || "qwen2.5-coder:7b";
+  return modeModel || roleModel || process.env.OLLAMA_MODEL || "qwen2.5-coder:7b";
 }
 
 function buildAttachmentContext(attachments: AgentAttachment[]): string {

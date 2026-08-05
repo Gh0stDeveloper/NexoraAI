@@ -32,6 +32,7 @@ Se conservan estos recursos:
 | Keystore | `/opt/nexora-ai/secrets/android-release.keystore` |
 | Credenciales | `/opt/nexora-ai/secrets/android-signing.env` |
 | APK y SHA-256 | `/opt/nexora-ai/releases/` |
+| Manifiesto dinámico | `/opt/nexora-ai/releases/latest.json` |
 
 Las siguientes compilaciones no vuelven a crear la keystore ni descargan recursos ya presentes.
 La primera descarga de Android Command-line Tools y Gradle se comprueba con los SHA-256 oficiales antes de instalarse. Si personalizas una URL mediante variables de entorno, proporciona también su variable `*_SHA256` correspondiente.
@@ -71,16 +72,32 @@ Usa exactamente los valores de `android-signing.env`. El workflow jamás genera 
 ## Verificar un APK
 
 ```bash
-sha256sum -c /opt/nexora-ai/releases/NexoraAI-0.5.1.apk.sha256
-unzip -l /opt/nexora-ai/releases/NexoraAI-0.5.1.apk | grep libnexora.so
+sha256sum -c /opt/nexora-ai/releases/NexoraAI-0.6.0.apk.sha256
+unzip -l /opt/nexora-ai/releases/NexoraAI-0.6.0.apk | grep libnexora.so
 ```
 
 Debes encontrar `libnexora.so` en las cuatro ABI. Para comprobar firma:
 
 ```bash
 /opt/nexora-ai/android-sdk/build-tools/35.0.0/apksigner verify --verbose \
-  /opt/nexora-ai/releases/NexoraAI-0.5.1.apk
+  /opt/nexora-ai/releases/NexoraAI-0.6.0.apk
 ```
+
+La salida debe indicar `true` para V1, V2 y V3. El compilador aborta antes de publicar si falta
+cualquiera de esos tres esquemas.
+
+## Publicación automática
+
+Al finalizar correctamente se actualizan de forma atómica:
+
+```text
+/opt/nexora-ai/releases/NexoraAI-0.6.0.apk
+/opt/nexora-ai/releases/NexoraAI-latest.apk
+/opt/nexora-ai/releases/latest.json
+```
+
+Nginx ya sirve el alias estable y la API lee `latest.json` mediante un volumen de solo lectura.
+No ejecutes `nexora restart` ni edites `.env.production` después de cada compilación.
 
 ## Cambiar la URL de API
 

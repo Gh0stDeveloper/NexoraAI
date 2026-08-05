@@ -23,7 +23,16 @@ export const mobileAttachmentSchema = z
 export const mobileChatSchema = z.object({
   message: z.string().trim().min(1).max(32_000),
   mode: z
-    .enum(["auto", "fullstack", "android", "backend", "security", "data", "devops"])
+    .enum([
+      "assistant",
+      "auto",
+      "fullstack",
+      "android",
+      "backend",
+      "security",
+      "data",
+      "devops",
+    ])
     .default("auto"),
   intelligence: z.enum(["instant", "medium", "high", "maximum"]).default("medium"),
   projectId: mobileIdentifierSchema,
@@ -33,7 +42,13 @@ export const mobileChatSchema = z.object({
   attachments: z.array(mobileAttachmentSchema).max(3).default([]),
 });
 
+export const mobileChatJobSchema = mobileChatSchema.extend({
+  requestId: z.string().uuid(),
+  requestToken: z.string().regex(/^[a-f0-9]{64}$/i),
+});
+
 export type MobileChatRequest = z.infer<typeof mobileChatSchema>;
+export type MobileChatJobRequest = z.infer<typeof mobileChatJobSchema>;
 
 export function mobileChatError(error: unknown): string {
   if (!(error instanceof z.ZodError)) {

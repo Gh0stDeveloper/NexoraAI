@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
+import { readLatestAndroidRelease } from "@/lib/android-release";
+import { userAndroidBuildsEnabled } from "@/lib/android-builds";
+import { ensureDatabase } from "@/lib/db";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
+  await ensureDatabase();
+  const androidRelease = await readLatestAndroidRelease();
   return NextResponse.json({
     ok: true,
     app: "Nexora AI",
     status: "ready",
-    version: process.env.APP_VERSION ?? "0.5.1",
+    version: androidRelease?.version ?? process.env.APP_VERSION ?? "0.6.0",
     provider: process.env.AI_PROVIDER ?? "ollama",
     siteUrl:
       process.env.NEXT_PUBLIC_SITE_URL ??
@@ -16,6 +23,11 @@ export async function GET() {
     features: [
       "public-download-website",
       "android-chat-client",
+      "durable-chat-jobs",
+      "request-recovery",
+      "general-conversation-assistant",
+      "automatic-android-release-manifest",
+      "temporary-user-apk-builds",
       "streaming-progress",
       "per-client-rate-limits",
       "projects-and-pinned-chats",
@@ -33,6 +45,12 @@ export async function GET() {
       vps: true,
       docs: true,
       ci: true,
+    },
+    androidRelease,
+    userBuilds: {
+      enabled: userAndroidBuildsEnabled(),
+      retentionSeconds: 3600,
+      signatureSchemes: ["V1", "V2", "V3"],
     },
   });
 }

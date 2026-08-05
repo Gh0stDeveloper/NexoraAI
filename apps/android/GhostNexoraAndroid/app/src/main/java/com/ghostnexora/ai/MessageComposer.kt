@@ -105,7 +105,7 @@ internal fun MessageComposer(
     }
 
     Surface(
-        color = Color(0xFF080C13),
+        color = Color(0xFF0D0D0D),
         tonalElevation = 10.dp,
         shadowElevation = 14.dp,
         modifier = Modifier
@@ -489,6 +489,7 @@ private fun SelectableOptionCard(
 }
 
 private fun modelBadge(model: NexoraModel): String = when (model) {
+    NexoraModel.ASSISTANT -> "CHAT"
     NexoraModel.AUTO -> "AUTO"
     NexoraModel.FULL_STACK -> "WEB"
     NexoraModel.ANDROID -> "APP"

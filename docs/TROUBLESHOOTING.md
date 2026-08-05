@@ -88,10 +88,13 @@ sudo systemctl reload nginx
 ```bash
 sudo nexora android-release
 ls -l /opt/nexora-ai/releases/
-curl -I https://ghostnexoraai.duckdns.org/downloads/NexoraAI-0.5.1.apk
+curl -I https://ghostnexoraai.duckdns.org/downloads/NexoraAI-latest.apk
 ```
 
-Comprueba que `ANDROID_APK_URL` tenga el mismo nombre y reinicia la aplicación web.
+El build actual publica de forma atómica el APK versionado, `NexoraAI-latest.apk` y
+`latest.json`. No edites `ANDROID_APK_URL` ni reinicies la aplicación. Si el archivo existe
+pero la URL responde 404, confirma que Nginx usa `deploy/nginx/nexoraia-vps.conf` y ejecuta
+`sudo nginx -t` antes de recargarlo.
 
 ## Android no compila en ARM64
 
@@ -104,7 +107,7 @@ La firma cambió. Debes compilar con la keystore original. Verifica que `ANDROID
 ## `libnexora.so` falta
 
 ```bash
-unzip -l NexoraAI-0.5.1.apk | grep libnexora.so
+unzip -l NexoraAI-0.6.0.apk | grep libnexora.so
 ```
 
 Debe aparecer en cuatro rutas ABI. Si falta, revisa NDK/CMake y el job “Verify native library”.

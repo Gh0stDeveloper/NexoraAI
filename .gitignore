@@ -17,4 +17,7 @@ apps/android/GhostNexoraAndroid/build
 apps/android/GhostNexoraAndroid/app/build
 apps/android/GhostNexoraAndroid/app/.cxx
 apps/android/GhostNexoraAndroid/app/.externalNativeBuild
+build-worker/template/.gradle
+build-worker/template/build
+build-worker/template/app/build
 training/output
