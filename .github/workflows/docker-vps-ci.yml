@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   docker:
-    name: Validate Docker and VPS scripts
+    name: Validate Docker, Nginx and VPS scripts
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -32,6 +32,12 @@ jobs:
 
       - name: Validate Docker Compose VPS config
         run: docker compose -f docker-compose.vps.yml config
+
+      - name: Validate Nginx production config
+        run: |
+          docker run --rm \
+            -v "$PWD/deploy/nginx/nexoraia-vps.conf:/etc/nginx/conf.d/default.conf:ro" \
+            nginx:1.27-alpine nginx -t
 
       - name: Build Docker image
         run: docker build -t nexora-ai:${{ github.sha }} .
