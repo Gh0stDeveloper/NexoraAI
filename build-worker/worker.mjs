@@ -255,7 +255,7 @@ async function compileBuild(job) {
   );
   const verification = await execFileAsync(
     apksigner,
-    ["verify", "--verbose", signedApk],
+    ["verify", "--min-sdk-version", "23", "--verbose", signedApk],
     { timeout: 60_000, maxBuffer: 512 * 1024 },
   );
   const verified = verification.stdout;

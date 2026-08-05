@@ -285,6 +285,7 @@ includes("deploy/scripts/android-builder.sh", [
   "GRADLE_SHA256",
   "assembleRelease",
   "--v1-signing-enabled true",
+  "--min-sdk-version 23",
   "NexoraAI-latest.apk",
   "latest.json",
   "publish_file_atomically",
@@ -346,6 +347,7 @@ includes(".github/workflows/android-ci.yml", [
   "lib/$ABI/libnexora.so",
   "$ANDROID_HOME/build-tools/35.0.0/apksigner",
   "--v3-signing-enabled true",
+  "--min-sdk-version 23",
   "assembleDebug",
   "assembleRelease",
 ]);

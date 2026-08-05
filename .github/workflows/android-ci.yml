@@ -149,7 +149,7 @@ jobs:
           APK="$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)"
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           test -x "$APKSIGNER"
-          VERIFY="$("$APKSIGNER" verify --verbose "$APK")"
+          VERIFY="$("$APKSIGNER" verify --min-sdk-version 23 --verbose "$APK")"
           grep -Eiq 'Verified using v1 scheme.*: true' <<< "$VERIFY"
           grep -Eiq 'Verified using v2 scheme.*: true' <<< "$VERIFY"
           grep -Eiq 'Verified using v3 scheme.*: true' <<< "$VERIFY"
@@ -190,7 +190,7 @@ jobs:
               --v4-signing-enabled false \
               --out "$SIGNED_APK" \
               "$ALIGNED_APK"
-          VERIFY="$("$APKSIGNER" verify --verbose "$SIGNED_APK")"
+          VERIFY="$("$APKSIGNER" verify --min-sdk-version 23 --verbose "$SIGNED_APK")"
           printf '%s\n' "$VERIFY"
           grep -Eiq 'Verified using v1 scheme.*: true' <<< "$VERIFY"
           grep -Eiq 'Verified using v2 scheme.*: true' <<< "$VERIFY"

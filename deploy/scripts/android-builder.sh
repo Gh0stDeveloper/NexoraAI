@@ -147,7 +147,13 @@ apksigner sign \
   --out "$signing_work/signed.apk" \
   "$signing_work/aligned.apk"
 
-verification="$(apksigner verify --verbose --print-certs "$signing_work/signed.apk")"
+verification="$(
+  apksigner verify \
+    --min-sdk-version 23 \
+    --verbose \
+    --print-certs \
+    "$signing_work/signed.apk"
+)"
 for scheme in v1 v2 v3; do
   if ! grep -Eiq "Verified using ${scheme} scheme.*: true" <<< "$verification"; then
     printf 'ERROR: el APK no quedó firmado con %s.\n' "${scheme^^}" >&2
