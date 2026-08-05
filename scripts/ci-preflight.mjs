@@ -151,6 +151,10 @@ includes(`${androidBase}/app/build.gradle.kts`, [
   "externalNativeBuild",
   "isMinifyEnabled = true",
 ]);
+includes(".gitignore", [
+  `${androidBase}/app/.cxx`,
+  `${androidBase}/app/.externalNativeBuild`,
+]);
 includes(`${androidPackage}/ApiClient.kt`, [
   "NativeBridge.apiOrigin()",
   "NativeBridge.chatPath()",
