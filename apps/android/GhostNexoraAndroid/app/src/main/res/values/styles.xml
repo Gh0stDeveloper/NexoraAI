@@ -3,10 +3,19 @@
         <item name="android:fontFamily">sans</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
-        <item name="android:statusBarColor">#06080E</item>
-        <item name="android:navigationBarColor">#06080E</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/nexora_background</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
         <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">@color/nexora_background</item>
+    </style>
+
+    <style name="Theme.NexoraAI.Starting" parent="Theme.SplashScreen.IconBackground">
+        <item name="windowSplashScreenBackground">@color/nexora_splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/nexora_splash_icon</item>
+        <item name="windowSplashScreenIconBackgroundColor">@color/nexora_splash_icon_background</item>
+        <item name="windowSplashScreenAnimationDuration">650</item>
+        <item name="postSplashScreenTheme">@style/AppTheme</item>
     </style>
 </resources>

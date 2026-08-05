@@ -7,7 +7,7 @@ enum class NexoraModel(
     val label: String,
     val description: String,
 ) {
-    AUTO("auto", "Automático", "Nexora elige el modelo más adecuado."),
+    AUTO("auto", "Automático", "Nexora selecciona la especialidad más adecuada."),
     FULL_STACK("fullstack", "Full-stack", "Web, frontend, backend, APIs y bases de datos."),
     ANDROID("android", "Android", "Kotlin, Jetpack Compose, Gradle y arquitectura móvil."),
     BACKEND("backend", "Backend", "Servicios, contratos, autenticación y persistencia."),
@@ -20,11 +20,12 @@ enum class IntelligenceLevel(
     val wireValue: String,
     val label: String,
     val description: String,
+    val agentCount: Int,
 ) {
-    INSTANT("instant", "Instantánea", "Respuesta rápida para tareas sencillas."),
-    MEDIUM("medium", "Media", "Equilibrio entre velocidad y razonamiento."),
-    HIGH("high", "Alta", "Más análisis para problemas complejos."),
-    MAXIMUM("maximum", "Máxima", "Mayor profundidad, contexto y verificación."),
+    INSTANT("instant", "Instantánea", "Una IA responde con máxima rapidez.", 1),
+    MEDIUM("medium", "Media", "Tres agentes planifican, resuelven y sintetizan.", 3),
+    HIGH("high", "Alta", "Cuatro agentes añaden revisión técnica y calidad.", 4),
+    MAXIMUM("maximum", "Máxima", "Seis agentes colaboran, verifican y consolidan.", 6),
 }
 
 data class PendingAttachment(
