@@ -1,7 +1,7 @@
-# seguridad
+# 🔐 Seguridad
 
-Documento operativo de Nexora AI. Esta sección se puede leer desde la página web en /docs y sirve para guiar instalación, operación, despliegue, seguridad y validación CI en VPS propia.
+Nexora AI usa HTTPS en producción, tráfico claro local limitado, política defensiva, configuración de ejecución desactivada por defecto, secretos fuera de Git y contenedores limitados para pruebas opcionales.
 
-## Estado
+La ofuscación del APK solo dificulta análisis superficial; no sustituye autenticación ni autorización del servidor.
 
-Preparado para producción progresiva. Los dominios pueden configurarse después de validar por IP del VPS.
+Lee el [modelo de seguridad del sandbox](SANDBOX.md) y la [guía de instalación](README-INSTALL.md).

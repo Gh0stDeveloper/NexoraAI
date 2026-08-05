@@ -1,7 +1,6 @@
-# vps
+# 🖥️ VPS
 
-Documento operativo de Nexora AI. Esta sección se puede leer desde la página web en /docs y sirve para guiar instalación, operación, despliegue, seguridad y validación CI en VPS propia.
-
-## Estado
-
-Preparado para producción progresiva. Los dominios pueden configurarse después de validar por IP del VPS.
+- Instalación completa: [README-INSTALL.md](README-INSTALL.md)
+- Actualización y rollback: [README-UPDATE.md](README-UPDATE.md)
+- Compatibilidad: [SUPPORT-MATRIX.md](SUPPORT-MATRIX.md)
+- Errores frecuentes: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)

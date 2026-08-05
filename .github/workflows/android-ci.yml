@@ -53,7 +53,9 @@ jobs:
         run: |
           APK="$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)"
           test -n "$APK"
-          unzip -l "$APK" | grep -q "libnexora_config.so"
+          for ABI in armeabi-v7a arm64-v8a x86 x86_64; do
+            unzip -l "$APK" | grep -q "lib/$ABI/libnexora.so"
+          done
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
@@ -135,7 +137,9 @@ jobs:
         run: |
           APK="$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)"
           test -n "$APK"
-          unzip -l "$APK" | grep -q "libnexora_config.so"
+          for ABI in armeabi-v7a arm64-v8a x86 x86_64; do
+            unzip -l "$APK" | grep -q "lib/$ABI/libnexora.so"
+          done
 
       - name: Upload release APK artifact
         if: steps.signing.outputs.enabled == 'true'

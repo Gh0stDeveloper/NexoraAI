@@ -1,3 +1,8 @@
+import {
+  validateGeneratedCode,
+  type CodeValidationResult,
+} from "@/lib/sandbox";
+
 export type AgentMode =
   | "auto"
   | "fullstack"
@@ -21,6 +26,30 @@ type AgentOptions = {
   intelligence?: IntelligenceLevel;
   attachments?: AgentAttachment[];
   conversationId?: string;
+  projectId?: string;
+  validateCode?: boolean;
+  onProgress?: (progress: AgentProgress) => void | Promise<void>;
+};
+
+export type AgentProgressStage =
+  | "received"
+  | "safety"
+  | "planning"
+  | "working"
+  | "reviewing"
+  | "testing"
+  | "synthesizing"
+  | "sandbox"
+  | "completed";
+
+export type AgentProgress = {
+  stage: AgentProgressStage;
+  label: string;
+  status: "active" | "completed";
+  step: number;
+  totalSteps: number;
+  elapsedMs: number;
+  agent?: string;
 };
 
 type ProviderErrorCode =
@@ -39,6 +68,8 @@ type AgentResult = {
   orchestration: "single" | "collaborative";
   nextActions: string[];
   elapsedMs: number;
+  trace: AgentProgress[];
+  codeValidation?: CodeValidationResult;
   providerError?: ProviderErrorCode;
 };
 
@@ -354,6 +385,30 @@ function limitFinding(value: string): string {
     : `${value.slice(0, 8_000)}\n[Contenido recortado]`;
 }
 
+type RoleProgressReporter = (
+  role: RoleDefinition,
+  status: "active" | "completed",
+  step: number,
+  totalSteps: number,
+) => void | Promise<void>;
+
+function progressStageForRole(role: AgentRole): AgentProgressStage {
+  switch (role) {
+    case "planner":
+      return "planning";
+    case "reviewer":
+    case "security":
+    case "critic":
+      return "reviewing";
+    case "tester":
+      return "testing";
+    case "synthesizer":
+      return "synthesizing";
+    default:
+      return "working";
+  }
+}
+
 async function runRole(params: {
   role: RoleDefinition;
   mode: AgentMode;
@@ -363,7 +418,16 @@ async function runRole(params: {
   images: string[];
   sharedNotes: string;
   finalResponse: boolean;
+  step: number;
+  totalSteps: number;
+  onProgress?: RoleProgressReporter;
 }): Promise<{ role: RoleDefinition; output: string }> {
+  await params.onProgress?.(
+    params.role,
+    "active",
+    params.step,
+    params.totalSteps,
+  );
   const model = modelForRole(params.role, params.mode, params.images.length > 0);
   const content = [
     "Solicitud original:",
@@ -391,6 +455,13 @@ async function runRole(params: {
     timeoutMs: params.profile.timeoutMs,
   });
 
+  await params.onProgress?.(
+    params.role,
+    "completed",
+    params.step,
+    params.totalSteps,
+  );
+
   return { role: params.role, output: limitFinding(output) };
 }
 
@@ -399,6 +470,7 @@ async function runCollaborativeOrchestration(
   mode: AgentMode,
   intelligence: Exclude<IntelligenceLevel, "instant">,
   attachments: AgentAttachment[],
+  onProgress?: RoleProgressReporter,
 ): Promise<string> {
   const profile = intelligenceProfiles[intelligence];
   const roles = profile.roles;
@@ -417,6 +489,9 @@ async function runCollaborativeOrchestration(
     images,
     sharedNotes: "",
     finalResponse: false,
+    step: 1,
+    totalSteps: roles.length,
+    onProgress,
   });
 
   const parallel =
@@ -426,7 +501,7 @@ async function runCollaborativeOrchestration(
   if (parallel) {
     workerFindings.push(
       ...(await Promise.all(
-        middle.map((role) =>
+        middle.map((role, index) =>
           runRole({
             role,
             mode,
@@ -436,13 +511,16 @@ async function runCollaborativeOrchestration(
             images,
             sharedNotes: `${planning.role.label}:\n${planning.output}`,
             finalResponse: false,
+            step: index + 2,
+            totalSteps: roles.length,
+            onProgress,
           }),
         ),
       )),
     );
   } else {
     let sharedNotes = `${planning.role.label}:\n${planning.output}`;
-    for (const role of middle) {
+    for (const [index, role] of middle.entries()) {
       const finding = await runRole({
         role,
         mode,
@@ -452,6 +530,9 @@ async function runCollaborativeOrchestration(
         images,
         sharedNotes,
         finalResponse: false,
+        step: index + 2,
+        totalSteps: roles.length,
+        onProgress,
       });
       workerFindings.push(finding);
       sharedNotes = [
@@ -474,6 +555,9 @@ async function runCollaborativeOrchestration(
     images,
     sharedNotes: allNotes,
     finalResponse: true,
+    step: roles.length,
+    totalSteps: roles.length,
+    onProgress,
   });
 
   return final.output;
@@ -483,6 +567,7 @@ async function runInstant(
   message: string,
   mode: AgentMode,
   attachments: AgentAttachment[],
+  onProgress?: RoleProgressReporter,
 ): Promise<string> {
   const profile = intelligenceProfiles.instant;
   const role = profile.roles[0];
@@ -495,6 +580,9 @@ async function runInstant(
     images: imagePayload(attachments),
     sharedNotes: "",
     finalResponse: true,
+    step: 1,
+    totalSteps: 1,
+    onProgress,
   });
   return result.output;
 }
@@ -571,6 +659,63 @@ export async function runAgent(
   const startedAt = Date.now();
   const intelligence = options.intelligence ?? "medium";
   const attachments = options.attachments ?? [];
+  const profile = intelligenceProfiles[intelligence];
+  const trace: AgentProgress[] = [];
+  const totalSteps = profile.roles.length + (options.validateCode ? 1 : 0);
+
+  async function emit(
+    progress: Omit<AgentProgress, "elapsedMs" | "totalSteps"> & {
+      totalSteps?: number;
+    },
+  ): Promise<void> {
+    const event: AgentProgress = {
+      ...progress,
+      totalSteps: progress.totalSteps ?? totalSteps,
+      elapsedMs: Date.now() - startedAt,
+    };
+    trace.push(event);
+    try {
+      await options.onProgress?.(event);
+    } catch (error) {
+      console.warn("[NexoraAI] Progress subscriber failed", {
+        stage: event.stage,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const reportRoleProgress: RoleProgressReporter = async (
+    role,
+    status,
+    step,
+    roleTotal,
+  ) => {
+    await emit({
+      stage: progressStageForRole(role.role),
+      label:
+        status === "active"
+          ? `${role.label} trabajando`
+          : `${role.label} completado`,
+      status,
+      step,
+      totalSteps: roleTotal + (options.validateCode ? 1 : 0),
+      agent: role.label,
+    });
+  };
+
+  await emit({
+    stage: "received",
+    label: "Solicitud recibida por Nexora AI",
+    status: "completed",
+    step: 0,
+  });
+  await emit({
+    stage: "safety",
+    label: "Validando alcance y adjuntos",
+    status: "active",
+    step: 0,
+  });
+
   const safetyInput = [
     message,
     ...attachments.flatMap((attachment) =>
@@ -579,6 +724,12 @@ export async function runAgent(
   ].join("\n");
 
   if (abusePattern.test(safetyInput)) {
+    await emit({
+      stage: "safety",
+      label: "Solicitud bloqueada por la política defensiva",
+      status: "completed",
+      step: 0,
+    });
     return {
       agent: mode,
       safety: "blocked",
@@ -586,6 +737,7 @@ export async function runAgent(
       agentsUsed: 0,
       orchestration: "single",
       elapsedMs: Date.now() - startedAt,
+      trace,
       answer:
         "No puedo ayudar con abuso ofensivo, robo de credenciales, malware, evasión o exfiltración. Sí puedo ayudarte a auditar, endurecer y corregir sistemas propios o autorizados.",
       nextActions: [
@@ -596,18 +748,53 @@ export async function runAgent(
     };
   }
 
-  const profile = intelligenceProfiles[intelligence];
+  await emit({
+    stage: "safety",
+    label: "Validación completada",
+    status: "completed",
+    step: 0,
+  });
 
   try {
     const answer =
       intelligence === "instant"
-        ? await runInstant(message, mode, attachments)
+        ? await runInstant(message, mode, attachments, reportRoleProgress)
         : await runCollaborativeOrchestration(
             message,
             mode,
             intelligence,
             attachments,
+            reportRoleProgress,
           );
+
+    let codeValidation: CodeValidationResult | undefined;
+    if (options.validateCode) {
+      await emit({
+        stage: "sandbox",
+        label: "Preparando prueba efímera del código",
+        status: "active",
+        step: profile.roles.length + 1,
+      });
+      codeValidation = await validateGeneratedCode(answer);
+      await emit({
+        stage: "sandbox",
+        label:
+          codeValidation.status === "passed"
+            ? "Código validado en el laboratorio"
+            : codeValidation.status === "failed"
+              ? "La prueba encontró errores"
+              : "Prueba de código omitida de forma segura",
+        status: "completed",
+        step: profile.roles.length + 1,
+      });
+    }
+
+    await emit({
+      stage: "completed",
+      label: "Respuesta lista",
+      status: "completed",
+      step: totalSteps,
+    });
 
     return {
       agent: mode,
@@ -616,6 +803,8 @@ export async function runAgent(
       agentsUsed: profile.roles.length,
       orchestration: intelligence === "instant" ? "single" : "collaborative",
       elapsedMs: Date.now() - startedAt,
+      trace,
+      codeValidation,
       answer,
       nextActions: [
         "Revisar la respuesta",
@@ -625,6 +814,9 @@ export async function runAgent(
     };
   } catch (error) {
     const failure = providerFailure(error);
+    const attemptedAgents = new Set(
+      trace.flatMap((progress) => (progress.agent ? [progress.agent] : [])),
+    ).size;
     console.error("[NexoraAI] Ollama inference failed", {
       code: failure.code,
       mode,
@@ -638,14 +830,22 @@ export async function runAgent(
       ? `Se recibieron ${attachments.length} adjunto(s).`
       : "No se recibieron adjuntos.";
 
+    await emit({
+      stage: "completed",
+      label: "La inferencia terminó con una incidencia controlada",
+      status: "completed",
+      step: totalSteps,
+    });
+
     return {
       agent: mode,
       safety: "allowed",
       provider: "fallback",
       providerError: failure.code,
-      agentsUsed: profile.roles.length,
+      agentsUsed: attemptedAgents,
       orchestration: intelligence === "instant" ? "single" : "collaborative",
       elapsedMs: Date.now() - startedAt,
+      trace,
       answer: [attachmentSummary, failure.message].join("\n"),
       nextActions: failure.nextActions,
     };

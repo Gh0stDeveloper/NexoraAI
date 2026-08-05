@@ -1,6 +1,6 @@
 {
   "name": "nexora-ai",
-  "version": "0.4.1-duckdns-production",
+  "version": "0.5.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -14,15 +14,15 @@
     "docker:config:vps": "cp .env.vps.example .env.production && docker compose -f docker-compose.vps.yml config"
   },
   "dependencies": {
-    "next": "15.5.7",
-    "react": "19.1.2",
-    "react-dom": "19.1.2",
+    "next": "16.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "zod": "3.25.76"
   },
   "devDependencies": {
     "@types/node": "22.10.2",
-    "@types/react": "19.0.2",
-    "@types/react-dom": "19.0.2",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
     "typescript": "5.7.2"
   },
   "engines": {

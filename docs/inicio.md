@@ -1,7 +1,3 @@
-# inicio
+# 👋 Inicio
 
-Documento operativo de Nexora AI. Esta sección se puede leer desde la página web en /docs y sirve para guiar instalación, operación, despliegue, seguridad y validación CI en VPS propia.
-
-## Estado
-
-Preparado para producción progresiva. Los dominios pueden configurarse después de validar por IP del VPS.
+Nexora AI es una plataforma de IA privada alojada en VPS propia. Comienza con [la instalación desde cero](README-INSTALL.md), revisa [los requisitos](SUPPORT-MATRIX.md) y conserva [el procedimiento de actualización](README-UPDATE.md) antes de publicar.

@@ -37,12 +37,55 @@ data class PendingAttachment(
     val sizeBytes: Long,
 )
 
+data class AgentProgress(
+    val stage: String,
+    val label: String,
+    val status: String,
+    val step: Int,
+    val totalSteps: Int,
+    val elapsedMs: Long,
+    val agent: String? = null,
+)
+
+data class CodeValidationSummary(
+    val status: String,
+    val language: String? = null,
+    val exitCode: Int? = null,
+    val durationMs: Long? = null,
+    val output: String? = null,
+    val reason: String? = null,
+)
+
+data class ChatResponse(
+    val answer: String,
+    val elapsedMs: Long,
+    val agentsUsed: Int,
+    val provider: String,
+    val orchestration: String,
+    val trace: List<AgentProgress>,
+    val codeValidation: CodeValidationSummary? = null,
+    val error: String? = null,
+)
+
 data class ChatMessage(
     val id: String = UUID.randomUUID().toString(),
     val role: String,
     val content: String,
     val createdAt: Long = System.currentTimeMillis(),
     val attachmentNames: List<String> = emptyList(),
+    val elapsedMs: Long? = null,
+    val agentsUsed: Int? = null,
+    val provider: String? = null,
+    val trace: List<AgentProgress> = emptyList(),
+    val codeValidation: CodeValidationSummary? = null,
+)
+
+data class ChatProject(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+    val isPinned: Boolean = false,
 )
 
 data class ChatSession(
@@ -52,5 +95,8 @@ data class ChatSession(
     val updatedAt: Long = System.currentTimeMillis(),
     val model: NexoraModel = NexoraModel.AUTO,
     val intelligence: IntelligenceLevel = IntelligenceLevel.MEDIUM,
+    val projectId: String? = null,
+    val isPinned: Boolean = false,
+    val validateCode: Boolean = false,
     val messages: List<ChatMessage> = emptyList(),
 )

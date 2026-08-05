@@ -1,4 +1,4 @@
--keep class com.ghostnexora.ai.NativeConfig { *; }
+-keep class com.ghostnexora.ai.NativeBridge { *; }
 -keepclasseswithmembernames class * {
     native <methods>;
 }
