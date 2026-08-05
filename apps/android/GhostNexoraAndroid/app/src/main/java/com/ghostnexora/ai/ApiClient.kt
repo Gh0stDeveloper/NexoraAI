@@ -19,10 +19,10 @@ object ApiClient {
                 requestMethod = "POST"
                 connectTimeout = 20_000
                 readTimeout = when (intelligence) {
-                    IntelligenceLevel.INSTANT -> 45_000
-                    IntelligenceLevel.MEDIUM -> 75_000
-                    IntelligenceLevel.HIGH -> 120_000
-                    IntelligenceLevel.MAXIMUM -> 180_000
+                    IntelligenceLevel.INSTANT -> 90_000
+                    IntelligenceLevel.MEDIUM -> 240_000
+                    IntelligenceLevel.HIGH -> 420_000
+                    IntelligenceLevel.MAXIMUM -> 720_000
                 }
                 setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 setRequestProperty("Accept", "application/json")
