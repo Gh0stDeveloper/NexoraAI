@@ -1,6 +1,6 @@
 {
   "name": "nexora-ai",
-  "version": "0.2.0-client-api-android",
+  "version": "0.4.1-duckdns-production",
   "private": true,
   "scripts": {
     "dev": "next dev",
