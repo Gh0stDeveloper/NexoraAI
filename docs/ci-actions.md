@@ -2,6 +2,15 @@
 
 Esta guía explica cómo se valida NexoraAI antes de llevarlo a producción en una VPS propia.
 
+## Dominios oficiales
+
+```txt
+Web: https://ghostnexoraai.duckdns.org
+API: https://apighostnexoraai.duckdns.org
+```
+
+La configuración detallada de Nginx, Certbot y Docker está en `docs/duckdns-vps.md`.
+
 ## Objetivo
 
 La rama principal debe quedar protegida por pruebas automáticas que validen:
@@ -23,42 +32,21 @@ La rama principal debe quedar protegida por pruebas automáticas que validen:
 | Training Dataset CI | `.github/workflows/training-ci.yml` | Compila el validador Python y valida el JSONL de entrenamiento. |
 | Android CI | `.github/workflows/android-ci.yml` | Compila APK debug siempre que cambie Android y compila release firmado solo si existen secretos. |
 
-## Correcciones aplicadas
+## Correcciones de CI aplicadas
 
 ### `setup-node` sin lockfile
 
-El primer fallo de Web API CI se produjo porque `actions/setup-node` usaba `cache: npm` sin `package-lock.json`.
-
-Solución aplicada:
-
-```yaml
-with:
-  node-version: 22
-```
-
-Se quitó `cache: npm` hasta que exista un lockfile comprometido en el repo.
+El primer fallo de Web API CI se produjo porque `actions/setup-node` usaba `cache: npm` sin `package-lock.json`. Se quitó `cache: npm` hasta que exista un lockfile comprometido en el repositorio.
 
 ### Docker Compose sin `.env.production`
 
-El primer fallo de Docker VPS CI se produjo porque `docker-compose.vps.yml` espera `.env.production`.
-
-Solución aplicada:
+`docker-compose.vps.yml` espera `.env.production`. En CI se genera a partir de la plantilla pública:
 
 ```bash
 cp .env.vps.example .env.production
 ```
 
-Esto permite validar Compose en CI sin usar secretos reales.
-
-### Dockerfile sin carpeta `public`
-
-El build Docker falló porque `Dockerfile` copiaba `/app/public` y la carpeta no existía.
-
-Solución aplicada:
-
-- Se agregó `public/nexora.svg`.
-- Se agregó `public/manifest.json`.
-- El build Docker puede conservar `COPY --from=builder /app/public ./public`.
+La plantilla contiene únicamente valores no sensibles y marcadores que deben cambiarse en producción.
 
 ## Android debug y release
 
@@ -66,14 +54,19 @@ La app Android usa:
 
 ```txt
 Debug:   http://10.0.2.2:3000/
-Release: https://api.nexoraia.com/
+Release: https://apighostnexoraai.duckdns.org/
 ```
 
-El dominio no necesita existir para compilar. Solo será necesario cuando se pruebe la app contra producción real.
+La URL release se almacena ofuscada dentro de la biblioteca JNI `libnexora_config.so`. La versión actual es:
+
+```txt
+versionCode: 5
+versionName: 0.4.1-duckdns-production
+```
 
 ### APK debug
 
-El APK debug se compila en pull requests y pushes que modifiquen `apps/android/**`.
+El APK debug se compila en pull requests y pushes que modifiquen Android.
 
 Artifact:
 
@@ -83,7 +76,7 @@ nexora-ai-debug-apk
 
 ### APK release firmado
 
-El APK release solo se compila en `push` o `workflow_dispatch`, nunca en pull requests, y solo cuando existan estos secretos:
+El APK release solo se compila en `push` o `workflow_dispatch`, nunca en pull requests, y únicamente cuando existen estos secretos:
 
 ```txt
 ANDROID_KEYSTORE_BASE64
@@ -92,19 +85,19 @@ ANDROID_KEY_ALIAS
 ANDROID_KEY_PASSWORD
 ```
 
+El propietario agregará manualmente estos secretos en **Settings → Secrets and variables → Actions**. La keystore y sus contraseñas nunca deben guardarse en el repositorio.
+
 Artifact cuando hay secretos:
 
 ```txt
 nexora-ai-release-apk
 ```
 
-Si los secretos no existen, el job release no falla: muestra un mensaje y se salta el build firmado.
+Si los secretos no existen, el job release no falla: se omite el build firmado.
 
 ## Preflight
 
-El script `scripts/ci-preflight.mjs` valida archivos críticos antes de ejecutar builds costosos.
-
-Comando local:
+El script `scripts/ci-preflight.mjs` valida archivos críticos, dominios de producción, versión Android, configuración Nginx y secretos esperados antes de ejecutar builds costosos.
 
 ```bash
 npm run ci:preflight
@@ -124,6 +117,12 @@ cp .env.vps.example .env.production
 docker compose -f docker-compose.vps.yml config
 ```
 
+En la VPS, después de configurar HTTPS:
+
+```bash
+VERIFY_PUBLIC_DOMAINS=true bash deploy/scripts/verify-vps.sh
+```
+
 ## Política para secretos
 
-Nunca subas keystore, `.env.production` real ni contraseñas al repositorio. La firma release debe entrar únicamente por GitHub Secrets.
+Nunca subas keystore, `.env.production` real, contraseñas, copias de PostgreSQL ni claves privadas al repositorio. La firma release debe entrar únicamente por GitHub Secrets y existir temporalmente dentro del runner.
