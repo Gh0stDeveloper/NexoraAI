@@ -7,10 +7,10 @@ services:
     depends_on: [postgres, ollama]
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 15s
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped

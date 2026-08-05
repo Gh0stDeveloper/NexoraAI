@@ -26,6 +26,8 @@ const requiredFiles = [
   "src/lib/agent.ts",
   "src/lib/mobile-chat.ts",
   "scripts/mobile-chat-contract.test.mjs",
+  "scripts/vps-healthcheck.test.sh",
+  "scripts/vps-update-contract.test.sh",
   "src/lib/rate-limit.ts",
   "src/lib/sandbox.ts",
   "sandbox/Dockerfile",
@@ -236,7 +238,20 @@ includes("deploy/scripts/bootstrap-vps.sh", [
   "sha256sum --check",
   "/opt/nexora-ai/state",
 ]);
-includes("deploy/scripts/nexora-vps.sh", ["update)", "rollback)", "backup)", "android-release)"]);
+includes("deploy/scripts/nexora-vps.sh", [
+  "update)",
+  "rollback)",
+  "backup)",
+  "android-release)",
+  "flock --nonblock",
+  "no se reinició ningún contenedor",
+  "rollback automático",
+]);
+includes("deploy/scripts/verify-vps.sh", [
+  "wait_for_command",
+  "NEXORA_VERIFY_TIMEOUT_SECONDS",
+  "show_app_diagnostics",
+]);
 includes("deploy/scripts/platform-check.sh", [
   "ubuntu:22",
   "ubuntu:24",

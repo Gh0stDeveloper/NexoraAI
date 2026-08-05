@@ -130,7 +130,7 @@ Guía completa: [Compilar Android en VPS](docs/ANDROID-BUILD-VPS.md).
 nexora update
 ```
 
-El comando comprueba cambios locales, crea un respaldo de PostgreSQL, actualiza con avance rápido, reutiliza las capas de Docker, reconstruye lo necesario y verifica salud. Si algo falla muestra el commit anterior para rollback:
+El comando bloquea operaciones simultáneas, comprueba cambios locales, crea un respaldo de PostgreSQL, actualiza con avance rápido, reutiliza las capas de Docker y espera el healthcheck con reintentos. Si el build, el arranque o la verificación fallan, restaura automáticamente el commit anterior. El rollback manual sigue disponible:
 
 ```bash
 nexora rollback <commit>

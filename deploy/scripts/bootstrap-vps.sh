@@ -17,7 +17,7 @@ bash "$ROOT/deploy/scripts/platform-check.sh"
 sudo apt-get update
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   ca-certificates curl git gnupg jq openssl unzip \
-  nginx certbot python3-certbot-nginx ufw fail2ban
+  nginx certbot python3-certbot-nginx ufw fail2ban util-linux
 
 if ! command -v docker >/dev/null 2>&1; then
   # shellcheck disable=SC1091
