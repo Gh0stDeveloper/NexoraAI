@@ -444,9 +444,10 @@ internal fun MessageBubble(
                 Text(message.content, color = Color(0xFFEAF0EE), lineHeight = 22.sp)
 
                 if (!isUser) {
-                    message.buildArtifact?.let { artifact ->
+                    val artifact = message.buildArtifact
+                    if (artifact != null) {
                         AndroidBuildCard(artifact = artifact, onDownload = onDownload)
-                    } ?: if (
+                    } else if (
                         userBuildsEnabled &&
                         message.content.isNotBlank() &&
                         message.requestStatus != RequestStatus.FAILED

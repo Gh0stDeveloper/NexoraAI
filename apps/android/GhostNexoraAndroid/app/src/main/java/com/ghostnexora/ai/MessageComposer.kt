@@ -489,6 +489,7 @@ private fun SelectableOptionCard(
 }
 
 private fun modelBadge(model: NexoraModel): String = when (model) {
+    NexoraModel.ASSISTANT -> "CHAT"
     NexoraModel.AUTO -> "AUTO"
     NexoraModel.FULL_STACK -> "WEB"
     NexoraModel.ANDROID -> "APP"
