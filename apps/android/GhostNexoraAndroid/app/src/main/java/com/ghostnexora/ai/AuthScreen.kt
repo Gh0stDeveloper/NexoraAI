@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Facebook
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MarkEmailRead
+import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Visibility
@@ -67,13 +69,23 @@ internal fun AuthScreen(
     error: String?,
     onSocial: (String) -> Unit,
     onEmail: (Boolean, String, String, String) -> Unit,
+    onPasswordResetRequest: (String) -> Unit,
+    onPasswordResetConfirm: (String, String, String) -> Unit,
     onClearError: () -> Unit,
 ) {
     var mode by rememberSaveable { mutableStateOf(AuthScreenMode.WELCOME) }
     var name by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
+    var resetCode by rememberSaveable { mutableStateOf("") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
+
+    fun navigate(next: AuthScreenMode) {
+        onClearError()
+        if (next != AuthScreenMode.RESET_PASSWORD) resetCode = ""
+        if (next == AuthScreenMode.WELCOME) password = ""
+        mode = next
+    }
 
     Box(
         modifier = Modifier
@@ -128,8 +140,13 @@ internal fun AuthScreen(
             if (mode != AuthScreenMode.WELCOME) {
                 IconButton(
                     onClick = {
-                        onClearError()
-                        mode = AuthScreenMode.WELCOME
+                        navigate(
+                            when (mode) {
+                                AuthScreenMode.RESET_PASSWORD -> AuthScreenMode.FORGOT_PASSWORD
+                                AuthScreenMode.FORGOT_PASSWORD -> AuthScreenMode.LOGIN
+                                else -> AuthScreenMode.WELCOME
+                            },
+                        )
                     },
                     modifier = Modifier.align(Alignment.Start),
                 ) {
@@ -142,8 +159,12 @@ internal fun AuthScreen(
             NexoraMark(82.dp)
             Spacer(Modifier.height(20.dp))
             Text(
-                text = if (mode == AuthScreenMode.WELCOME) "Tu espacio de inteligencia" else {
-                    if (mode == AuthScreenMode.REGISTER) "Crea tu cuenta" else "Bienvenido de nuevo"
+                text = when (mode) {
+                    AuthScreenMode.WELCOME -> "Tu espacio de inteligencia"
+                    AuthScreenMode.REGISTER -> "Crea tu cuenta"
+                    AuthScreenMode.LOGIN -> "Bienvenido de nuevo"
+                    AuthScreenMode.FORGOT_PASSWORD -> "Recupera tu cuenta"
+                    AuthScreenMode.RESET_PASSWORD -> "Nueva contraseña"
                 },
                 color = Color.White,
                 fontWeight = FontWeight.Black,
@@ -153,10 +174,15 @@ internal fun AuthScreen(
             )
             Spacer(Modifier.height(9.dp))
             Text(
-                text = if (mode == AuthScreenMode.WELCOME) {
-                    "Inicia sesión para mantener tus chats, proyectos y respuestas sincronizados en Nexora AI."
-                } else {
-                    "Tu historial se guarda de forma segura en tu propia infraestructura de Nexora AI."
+                text = when (mode) {
+                    AuthScreenMode.WELCOME ->
+                        "Inicia sesión para mantener tus chats, proyectos y respuestas sincronizados en Nexora AI."
+                    AuthScreenMode.FORGOT_PASSWORD ->
+                        "Te enviaremos un código de 6 dígitos. Por seguridad, no indicaremos si el correo está registrado."
+                    AuthScreenMode.RESET_PASSWORD ->
+                        "Introduce el código recibido y define una contraseña nueva para tu cuenta."
+                    else ->
+                        "Tu historial se guarda de forma segura en tu propia infraestructura de Nexora AI."
                 },
                 color = NexoraMuted,
                 fontSize = 14.sp,
@@ -179,154 +205,164 @@ internal fun AuthScreen(
                     modifier = Modifier.padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(11.dp),
                 ) {
-                    if (mode == AuthScreenMode.WELCOME) {
-                        SocialButton(
-                            title = "Continuar con Google",
-                            icon = Icons.Default.Language,
-                            iconTint = Color(0xFF8AB4F8),
-                            enabled = !loading,
-                            onClick = { onSocial("google") },
-                        )
-                        SocialButton(
-                            title = "Continuar con Facebook",
-                            icon = Icons.Default.Facebook,
-                            iconTint = Color(0xFF74A9FF),
-                            enabled = !loading,
-                            onClick = { onSocial("facebook") },
-                        )
-                        SocialButton(
-                            title = "Continuar con Discord",
-                            icon = Icons.Default.SportsEsports,
-                            iconTint = Color(0xFF9AA7FF),
-                            enabled = !loading,
-                            onClick = { onSocial("discord") },
+                    when (mode) {
+                        AuthScreenMode.WELCOME -> WelcomeAuthActions(
+                            loading = loading,
+                            onSocial = onSocial,
+                            onEmail = { navigate(AuthScreenMode.LOGIN) },
                         )
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            HorizontalDivider(
-                                modifier = Modifier.weight(1f),
-                                color = Color.White.copy(alpha = 0.08f),
+                        AuthScreenMode.LOGIN,
+                        AuthScreenMode.REGISTER,
+                        -> {
+                            val register = mode == AuthScreenMode.REGISTER
+                            if (register) {
+                                OutlinedTextField(
+                                    value = name,
+                                    onValueChange = { name = it.take(80) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    label = { Text("Nombre") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Person, contentDescription = null)
+                                    },
+                                    shape = RoundedCornerShape(18.dp),
+                                )
+                            }
+                            EmailField(email = email, onEmailChange = { email = it })
+                            PasswordField(
+                                value = password,
+                                onValueChange = { password = it.take(128) },
+                                visible = passwordVisible,
+                                onToggleVisible = { passwordVisible = !passwordVisible },
+                                label = "Contraseña",
                             )
-                            Text("o", color = NexoraMuted, fontSize = 12.sp)
-                            HorizontalDivider(
-                                modifier = Modifier.weight(1f),
-                                color = Color.White.copy(alpha = 0.08f),
-                            )
-                        }
 
-                        Button(
-                            onClick = {
-                                onClearError()
-                                mode = AuthScreenMode.LOGIN
-                            },
-                            enabled = !loading,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(54.dp),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = NexoraAccent,
-                                contentColor = Color(0xFF04130E),
-                            ),
-                        ) {
-                            Icon(Icons.Default.AlternateEmail, contentDescription = null)
-                            Spacer(Modifier.size(9.dp))
-                            Text("Continuar con correo", fontWeight = FontWeight.Bold)
-                        }
-                    } else {
-                        val register = mode == AuthScreenMode.REGISTER
-                        if (register) {
-                            OutlinedTextField(
-                                value = name,
-                                onValueChange = { name = it.take(80) },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                label = { Text("Nombre") },
-                                leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                            Button(
+                                onClick = { onEmail(register, name, email, password) },
+                                enabled = !loading && email.isNotBlank() && password.length >= 8 &&
+                                    (!register || name.trim().length >= 2),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(54.dp),
                                 shape = RoundedCornerShape(18.dp),
-                            )
-                        }
-                        OutlinedTextField(
-                            value = email,
-                            onValueChange = { email = it.take(160) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            label = { Text("Correo electrónico") },
-                            leadingIcon = {
-                                Icon(Icons.Default.AlternateEmail, contentDescription = null)
-                            },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                            shape = RoundedCornerShape(18.dp),
-                        )
-                        OutlinedTextField(
-                            value = password,
-                            onValueChange = { password = it.take(128) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            label = { Text("Contraseña") },
-                            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
-                            trailingIcon = {
-                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                    Icon(
-                                        if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                        contentDescription = if (passwordVisible) {
-                                            "Ocultar contraseña"
-                                        } else {
-                                            "Mostrar contraseña"
-                                        },
+                            ) {
+                                if (loading) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                } else {
+                                    Text(
+                                        if (register) "Crear cuenta" else "Iniciar sesión",
+                                        fontWeight = FontWeight.Bold,
                                     )
                                 }
-                            },
-                            visualTransformation = if (passwordVisible) {
-                                VisualTransformation.None
-                            } else {
-                                PasswordVisualTransformation()
-                            },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                            shape = RoundedCornerShape(18.dp),
-                        )
+                            }
 
-                        Button(
-                            onClick = { onEmail(register, name, email, password) },
-                            enabled = !loading && email.isNotBlank() && password.length >= 8 &&
-                                (!register || name.trim().length >= 2),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(54.dp),
-                            shape = RoundedCornerShape(18.dp),
-                        ) {
-                            if (loading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp,
-                                )
-                            } else {
+                            if (!register) {
+                                TextButton(
+                                    onClick = { navigate(AuthScreenMode.FORGOT_PASSWORD) },
+                                    enabled = !loading,
+                                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                                ) {
+                                    Text("Olvidé mi contraseña")
+                                }
+                            }
+                            TextButton(
+                                onClick = {
+                                    navigate(
+                                        if (register) AuthScreenMode.LOGIN else AuthScreenMode.REGISTER,
+                                    )
+                                },
+                                enabled = !loading,
+                                modifier = Modifier.align(Alignment.CenterHorizontally),
+                            ) {
                                 Text(
-                                    if (register) "Crear cuenta" else "Iniciar sesión",
-                                    fontWeight = FontWeight.Bold,
+                                    if (register) {
+                                        "Ya tengo cuenta"
+                                    } else {
+                                        "Crear una cuenta con correo"
+                                    },
                                 )
                             }
                         }
 
-                        TextButton(
-                            onClick = {
-                                onClearError()
-                                mode = if (register) AuthScreenMode.LOGIN else AuthScreenMode.REGISTER
-                            },
-                            enabled = !loading,
-                            modifier = Modifier.align(Alignment.CenterHorizontally),
-                        ) {
-                            Text(
-                                if (register) {
-                                    "Ya tengo cuenta"
-                                } else {
-                                    "Crear una cuenta con correo"
+                        AuthScreenMode.FORGOT_PASSWORD -> {
+                            EmailField(email = email, onEmailChange = { email = it })
+                            Button(
+                                onClick = {
+                                    onPasswordResetRequest(email)
+                                    navigate(AuthScreenMode.RESET_PASSWORD)
                                 },
+                                enabled = !loading && email.contains('@') && email.length >= 5,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(54.dp),
+                                shape = RoundedCornerShape(18.dp),
+                            ) {
+                                Icon(Icons.Default.MarkEmailRead, contentDescription = null)
+                                Spacer(Modifier.size(8.dp))
+                                Text("Enviar código", fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        AuthScreenMode.RESET_PASSWORD -> {
+                            EmailField(email = email, onEmailChange = { email = it })
+                            OutlinedTextField(
+                                value = resetCode,
+                                onValueChange = {
+                                    resetCode = it.filter(Char::isDigit).take(6)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                label = { Text("Código de 6 dígitos") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Password, contentDescription = null)
+                                },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                shape = RoundedCornerShape(18.dp),
                             )
+                            PasswordField(
+                                value = password,
+                                onValueChange = { password = it.take(128) },
+                                visible = passwordVisible,
+                                onToggleVisible = { passwordVisible = !passwordVisible },
+                                label = "Nueva contraseña",
+                            )
+                            Button(
+                                onClick = {
+                                    onPasswordResetConfirm(email, resetCode, password)
+                                },
+                                enabled = !loading && resetCode.length == 6 && password.length >= 8,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(54.dp),
+                                shape = RoundedCornerShape(18.dp),
+                            ) {
+                                if (loading) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                    )
+                                } else {
+                                    Text("Cambiar contraseña", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            TextButton(
+                                onClick = { onPasswordResetRequest(email) },
+                                enabled = !loading,
+                                modifier = Modifier.align(Alignment.CenterHorizontally),
+                            ) {
+                                Text("Enviar otro código")
+                            }
+                            TextButton(
+                                onClick = { navigate(AuthScreenMode.LOGIN) },
+                                enabled = !loading,
+                                modifier = Modifier.align(Alignment.CenterHorizontally),
+                            ) {
+                                Text("Volver a iniciar sesión")
+                            }
                         }
                     }
 
@@ -370,6 +406,120 @@ internal fun AuthScreen(
             Spacer(Modifier.height(18.dp))
         }
     }
+}
+
+@Composable
+private fun WelcomeAuthActions(
+    loading: Boolean,
+    onSocial: (String) -> Unit,
+    onEmail: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
+        SocialButton(
+            title = "Continuar con Google",
+            icon = Icons.Default.Language,
+            iconTint = Color(0xFF8AB4F8),
+            enabled = !loading,
+            onClick = { onSocial("google") },
+        )
+        SocialButton(
+            title = "Continuar con Facebook",
+            icon = Icons.Default.Facebook,
+            iconTint = Color(0xFF74A9FF),
+            enabled = !loading,
+            onClick = { onSocial("facebook") },
+        )
+        SocialButton(
+            title = "Continuar con Discord",
+            icon = Icons.Default.SportsEsports,
+            iconTint = Color(0xFF9AA7FF),
+            enabled = !loading,
+            onClick = { onSocial("discord") },
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            HorizontalDivider(
+                modifier = Modifier.weight(1f),
+                color = Color.White.copy(alpha = 0.08f),
+            )
+            Text("o", color = NexoraMuted, fontSize = 12.sp)
+            HorizontalDivider(
+                modifier = Modifier.weight(1f),
+                color = Color.White.copy(alpha = 0.08f),
+            )
+        }
+
+        Button(
+            onClick = onEmail,
+            enabled = !loading,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp),
+            shape = RoundedCornerShape(18.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = NexoraAccent,
+                contentColor = Color(0xFF04130E),
+            ),
+        ) {
+            Icon(Icons.Default.AlternateEmail, contentDescription = null)
+            Spacer(Modifier.size(9.dp))
+            Text("Continuar con correo", fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun EmailField(
+    email: String,
+    onEmailChange: (String) -> Unit,
+) {
+    OutlinedTextField(
+        value = email,
+        onValueChange = { onEmailChange(it.take(160)) },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        label = { Text("Correo electrónico") },
+        leadingIcon = { Icon(Icons.Default.AlternateEmail, contentDescription = null) },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+        shape = RoundedCornerShape(18.dp),
+    )
+}
+
+@Composable
+private fun PasswordField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    visible: Boolean,
+    onToggleVisible: () -> Unit,
+    label: String,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        label = { Text(label) },
+        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+        trailingIcon = {
+            IconButton(onClick = onToggleVisible) {
+                Icon(
+                    if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = if (visible) "Ocultar contraseña" else "Mostrar contraseña",
+                )
+            }
+        },
+        visualTransformation = if (visible) {
+            VisualTransformation.None
+        } else {
+            PasswordVisualTransformation()
+        },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        shape = RoundedCornerShape(18.dp),
+    )
 }
 
 @Composable
