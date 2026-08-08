@@ -31,6 +31,7 @@ fi
 export MAIL_DOMAIN MAIL_FROM MAIL_DKIM_SELECTOR MAIL_HOSTNAME
 mkdir -p "$KEY_DIR" /run/opendkim /etc/opendkim
 chmod 700 "$KEY_DIR"
+chown opendkim:opendkim /run/opendkim
 
 private_key="$KEY_DIR/${MAIL_DKIM_SELECTOR}.private"
 public_record="$KEY_DIR/${MAIL_DKIM_SELECTOR}.txt"
