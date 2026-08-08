@@ -21,10 +21,10 @@ class ChatStore(context: Context) {
     }
 
     fun save(sessions: List<ChatSession>, projects: List<ChatProject>) = synchronized(writeLock) {
-        val persistedMessages = decodeArray(KEY_SESSIONS) { it.toChatSession() }
-            .flatMap { it.messages }
-            .associateBy { it.id }
+        val persistedBySession = decodeArray(KEY_SESSIONS) { it.toChatSession() }
+            .associate { session -> session.id to session.messages.associateBy { it.id } }
         val mergedSessions = sessions.map { session ->
+            val persistedMessages = persistedBySession[session.id].orEmpty()
             session.copy(
                 messages = session.messages.map { message ->
                     val persisted = persistedMessages[message.id]
