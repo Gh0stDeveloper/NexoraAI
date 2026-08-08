@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MAIL_DOMAIN="${MAIL_DOMAIN:-}"
-MAIL_FROM="${MAIL_FROM:-}"
+MAIL_DOMAIN="${MAIL_DOMAIN:-${PUBLIC_DOMAIN:-ghostnexoraai.duckdns.org}}"
+MAIL_FROM="${MAIL_FROM:-noreply@${MAIL_DOMAIN}}"
 MAIL_DKIM_SELECTOR="${MAIL_DKIM_SELECTOR:-nexora}"
-MAIL_HOSTNAME="${MAIL_HOSTNAME:-mail.${MAIL_DOMAIN}}"
+MAIL_HOSTNAME="${MAIL_HOSTNAME:-${MAIL_DOMAIN}}"
 KEY_DIR="/var/lib/nexora-mail"
 
-if [[ -z "$MAIL_DOMAIN" || -z "$MAIL_FROM" || -z "${AUTH_EMAIL_WEBHOOK_SECRET:-}" ]]; then
-  printf 'ERROR: MAIL_DOMAIN, MAIL_FROM y AUTH_EMAIL_WEBHOOK_SECRET son obligatorios.\n' >&2
+if [[ -z "$MAIL_DOMAIN" || -z "$MAIL_FROM" ]]; then
+  printf 'ERROR: MAIL_DOMAIN y MAIL_FROM son obligatorios.\n' >&2
+  exit 2
+fi
+if [[ -z "${AUTH_EMAIL_WEBHOOK_SECRET:-}" && -z "${POSTGRES_PASSWORD:-}" ]]; then
+  printf 'ERROR: se requiere AUTH_EMAIL_WEBHOOK_SECRET o POSTGRES_PASSWORD.\n' >&2
   exit 2
 fi
 if [[ ! "$MAIL_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]]; then
@@ -24,6 +28,7 @@ if [[ "$MAIL_FROM" != *@* ]]; then
   exit 2
 fi
 
+export MAIL_DOMAIN MAIL_FROM MAIL_DKIM_SELECTOR MAIL_HOSTNAME
 mkdir -p "$KEY_DIR" /run/opendkim /etc/opendkim
 chmod 700 "$KEY_DIR"
 
@@ -44,13 +49,13 @@ chmod 644 "$public_record"
 cat > /etc/opendkim.conf <<EOF
 Syslog                  yes
 SyslogSuccess           yes
-LogWhy                   no
+LogWhy                  no
 Canonicalization        relaxed/simple
 Mode                    s
 SubDomains              no
 OversignHeaders         From
 UserID                  opendkim
-UMask                   007
+UMask                    007
 Socket                  inet:8891@127.0.0.1
 PidFile                 /run/opendkim/opendkim.pid
 KeyTable                refile:/etc/opendkim/KeyTable
