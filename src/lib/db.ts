@@ -40,6 +40,40 @@ create table if not exists app_password_credentials (
   updated_at timestamptz not null default now()
 );
 
+create or replace function nexora_prevent_implicit_auth_link()
+returns trigger
+language plpgsql
+as $$
+begin
+  if exists (
+    select 1
+      from app_password_credentials p
+     where p.user_id = new.user_id
+  ) or exists (
+    select 1
+      from app_auth_accounts a
+     where a.user_id = new.user_id
+       and (
+         a.provider <> new.provider
+         or a.provider_account_id <> new.provider_account_id
+       )
+  ) then
+    raise exception using
+      errcode = '23514',
+      message = 'implicit auth account linking is not allowed';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists app_auth_accounts_prevent_implicit_link
+  on app_auth_accounts;
+create trigger app_auth_accounts_prevent_implicit_link
+before insert or update of user_id, provider, provider_account_id
+on app_auth_accounts
+for each row
+execute function nexora_prevent_implicit_auth_link();
+
 create table if not exists app_auth_sessions (
   id uuid primary key,
   user_id uuid not null references app_users(id) on delete cascade,
