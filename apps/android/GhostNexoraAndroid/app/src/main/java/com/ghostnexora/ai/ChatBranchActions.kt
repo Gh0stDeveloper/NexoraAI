@@ -8,9 +8,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.CallSplit
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
@@ -70,7 +70,7 @@ internal fun ChatBranchActions(
                     modifier = Modifier.size(34.dp),
                 ) {
                     Icon(
-                        Icons.Default.CallSplit,
+                        Icons.AutoMirrored.Filled.CallSplit,
                         contentDescription = "Ramificar conversación",
                         modifier = Modifier.size(17.dp),
                     )
