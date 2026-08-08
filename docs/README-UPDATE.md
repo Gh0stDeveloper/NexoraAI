@@ -1,14 +1,87 @@
-# 🔄 Actualizar Nexora AI y volver atrás
+# Actualizar Nexora AI y volver atrás
 
-Esta guía evita perder `.env.production`, PostgreSQL, modelos Ollama, cachés Android o la keystore release.
+Esta guía evita perder `.env.production`, PostgreSQL, modelos Ollama, cachés Android, chats, claves DKIM o la keystore release.
 
-## Antes de actualizar
+## Actualización normal
+
+La instalación existente en la VPS no se reinstala. Cuando una nueva versión validada llega a `main`, el flujo normal sigue siendo:
 
 ```bash
 cd /opt/NexoraAI
-nexora status
+sudo nexora update
+```
+
+El comando realiza en orden:
+
+1. Comprueba que Git esté limpio.
+2. Adquiere un bloqueo para impedir actualizaciones, rollback o compilaciones simultáneas.
+3. Descarga `origin/main` y no reinicia nada si ya está instalada esa revisión.
+4. Crea un `pg_dump` comprimido si PostgreSQL está activo.
+5. Guarda el commit anterior en `/opt/nexora-ai/state/previous-version`.
+6. Solo acepta un avance `fast-forward`.
+7. Construye los servicios que existan en la nueva revisión.
+8. Conserva los volúmenes PostgreSQL, Ollama, releases, cachés, keystores y claves persistentes.
+9. Espera healthchecks y verifica API, servicios auxiliares y Nexora Mail cuando la revisión lo contiene.
+10. Si falla build, arranque o verificación, vuelve automáticamente al commit anterior y levanta esa revisión.
+11. Actualiza `/usr/local/bin/nexora` únicamente después de un despliegue correcto.
+
+Por defecto sigue `origin/main`. También acepta una referencia Git explícita:
+
+```bash
+sudo nexora update origin/main
+```
+
+## Migración desde la versión actualmente instalada en `main` a 0.9+
+
+No necesitas borrar contenedores, reinstalar PostgreSQL ni copiar una `.env.production` nueva.
+
+Nexora 0.9 incorpora de forma aditiva:
+
+- cuentas y sesiones ampliadas;
+- vinculación social explícita;
+- variantes/ramas de chat en Android;
+- Nexora Mail dentro del mismo Docker Compose;
+- un volumen `mailer-keys` para conservar la clave DKIM.
+
+La base de datos se amplía con `CREATE TABLE IF NOT EXISTS` y `ADD COLUMN IF NOT EXISTS`. El volumen PostgreSQL existente no se sustituye.
+
+Una `.env.production` de una versión anterior puede no contener todavía las variables de correo. La primera actualización sigue arrancando porque Nexora Mail usa valores compatibles derivados de la configuración ya existente. Después puedes endurecer la configuración con secretos dedicados sin reinstalar nada.
+
+La versión pública de la API se obtiene de la release instalada (`package.json`) y no queda atrapada en un `APP_VERSION` antiguo de `.env.production`.
+
+## Nexora Mail después de actualizar
+
+El servicio se construye y valida automáticamente durante `nexora update`.
+
+Comprueba su salud:
+
+```bash
+sudo nexora verify
+```
+
+Obtén los registros DNS recomendados:
+
+```bash
+sudo nexora mail-dns
+```
+
+Prueba una entrega real:
+
+```bash
+sudo nexora mail-test usuario@example.com
+```
+
+Nexora Mail no publica SMTP, IMAP ni POP3 hacia Internet. El gateway HTTP solo está disponible dentro de la red Docker. Para entregar correo a Gmail/Outlook u otros dominios sí son necesarios requisitos externos de Internet: TCP/25 de salida permitido por la VPS, PTR/rDNS y DNS SPF/DKIM/DMARC correctos. Consulta `docs/NEXORA-MAIL.md`.
+
+## Antes de actualizar
+
+El propio comando crea el respaldo de PostgreSQL, pero puedes ejecutar comprobaciones adicionales:
+
+```bash
+cd /opt/NexoraAI
+sudo nexora status
 git status --short
-nexora backup
+sudo nexora backup
 ```
 
 La actualización se detiene si encuentra cambios locales. No uses `git reset --hard` para ocultar cambios que necesites conservar.
@@ -21,127 +94,97 @@ Respalda periódicamente fuera de la VPS:
 - `/opt/nexora-ai/secrets/user-builds/`
 - `.env.production`
 
-## Actualización automática
+Los volúmenes Docker también deben formar parte de una estrategia externa de respaldo si el servicio ya contiene usuarios reales.
+
+## VPS lenta
+
+El tiempo de arranque predeterminado puede ampliarse solo para una ejecución:
 
 ```bash
-nexora update
+NEXORA_VERIFY_TIMEOUT_SECONDS=300 sudo nexora update
 ```
 
-El comando realiza en orden:
+## Configuración persistente
 
-1. Comprueba que Git esté limpio.
-2. Adquiere un bloqueo para impedir actualizaciones, rollback o compilaciones simultáneas.
-3. Descarga la referencia objetivo y no reinicia nada si ya está instalada.
-4. Crea un `pg_dump` comprimido si PostgreSQL está activo.
-5. Guarda el commit anterior en `/opt/nexora-ai/state/previous-version`.
-6. Solo acepta un avance rápido y reconstruye reutilizando la caché Docker.
-7. Espera el healthcheck y reintenta web, API y sandbox ante fallos transitorios.
-8. Si falla build, arranque o verificación, restaura automáticamente el commit anterior.
+No reemplaces `.env.production` completo con `.env.vps.example`; perderías secretos reales. Usa el ejemplo únicamente como referencia.
 
-Por defecto sigue `origin/main`. También acepta una referencia Git explícita:
+Para Nexora Mail 0.9 puedes configurar posteriormente secretos independientes:
 
 ```bash
-nexora update origin/main
+openssl rand -hex 32
+openssl rand -hex 32
 ```
 
-El tiempo de arranque predeterminado es 180 segundos. En una VPS especialmente lenta puede
-ampliarse solo para esa ejecución:
+Y guardarlos en `.env.production` como:
+
+```dotenv
+AUTH_CODE_PEPPER=<primer secreto>
+AUTH_EMAIL_WEBHOOK_SECRET=<segundo secreto>
+```
+
+También puedes elegir un dominio/hostname de correo propio:
+
+```dotenv
+MAIL_DOMAIN=example.com
+MAIL_HOSTNAME=mail.example.com
+MAIL_FROM=noreply@example.com
+MAIL_DKIM_SELECTOR=nexora
+```
+
+Después:
 
 ```bash
-NEXORA_VERIFY_TIMEOUT_SECONDS=300 nexora update
+sudo nexora restart
+sudo nexora verify
+sudo nexora mail-dns
 ```
-
-## Cambios de configuración
-
-Después de actualizar compara nuevas variables públicas:
-
-```bash
-diff -u .env.vps.example .env.production || true
-```
-
-No reemplaces `.env.production` completo. Agrega únicamente las claves nuevas y conserva contraseñas/tokens existentes.
-
-Aplica cambios:
-
-```bash
-nexora restart
-nexora verify
-```
-
-## Migración única de Nginx para 0.6
-
-La ruta temporal excluye su token del access log y el alias `NexoraAI-latest.apk` desactiva la
-caché. En una VPS que viene de 0.5, instala una sola vez la configuración nueva conservando un
-respaldo del sitio activo:
-
-```bash
-ls -l /etc/nginx/sites-enabled/
-sudo cp -a /etc/nginx/sites-available/ghost-nexora-ai \
-  /etc/nginx/sites-available/ghost-nexora-ai.pre-v060
-sudo cp deploy/nginx/nexoraia-vps.conf \
-  /etc/nginx/sites-available/ghost-nexora-ai
-sudo nginx -t
-sudo certbot --nginx --reinstall --redirect --non-interactive --agree-tos \
-  --email ghostnexora@gmail.com \
-  -d ghostnexoraai.duckdns.org \
-  -d apighostnexoraai.duckdns.org
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-Si el enlace activo usa otro nombre, sustituye `ghost-nexora-ai` por ese archivo. Si alguna
-validación falla, restaura `.pre-v060` antes de recargar Nginx.
 
 ## Recompilar Android
 
-Cuando cambie `versionCode`, `versionName`, Kotlin, Compose, C o JNI:
+Cuando cambien `versionCode`, `versionName`, Kotlin, Compose, C o JNI:
 
 ```bash
 sudo nexora android-release
 ```
 
-El compilador reutiliza la misma keystore, SDK, NDK, Gradle y dependencias.
-El build 0.6.0 publica de forma atómica el APK versionado, `NexoraAI-latest.apk`, su SHA-256 y
-`latest.json`. La API lee el manifiesto montado en solo lectura, por lo que no debes editar
-`APP_VERSION`, `ANDROID_APK_URL` ni reiniciar contenedores después de compilar.
+El compilador reutiliza la misma keystore, SDK, NDK, Gradle y dependencias. Publica de forma atómica el APK versionado, `NexoraAI-latest.apk`, su SHA-256 y `latest.json`. No es necesario editar `APP_VERSION` después de compilar.
 
 ## Rollback
 
-Si una actualización falla, el rollback se ejecuta automáticamente y el comando termina con
-error para dejar constancia de que no se instaló la versión nueva. El rollback manual sigue
-disponible:
+Si una actualización falla, el rollback se ejecuta automáticamente y el comando termina con error para dejar constancia de que la versión nueva no quedó instalada.
+
+Rollback manual:
 
 ```bash
-nexora rollback <sha-anterior>
+sudo nexora rollback <sha-anterior>
 ```
 
-Si omites el SHA, usa `/opt/nexora-ai/state/previous-version` cuando exista:
+Si omites el SHA usa `/opt/nexora-ai/state/previous-version` cuando exista:
 
 ```bash
-nexora rollback
+sudo nexora rollback
 ```
 
-El rollback modifica únicamente el checkout dedicado de Nexora AI y se niega a continuar si hay cambios locales.
+El CLI 0.9 comprueba qué servicios existen en la revisión objetivo. Por eso puede volver a una versión anterior que todavía no contenía `mailer`: no intenta construir un servicio inexistente. Docker retira el contenedor huérfano, mientras el volumen `mailer-keys` puede conservarse para una futura actualización.
 
-Los respaldos PostgreSQL con más de 30 días se eliminan después de crear uno nuevo. Para
-cambiar la retención usa `NEXORA_BACKUP_RETENTION_DAYS`; el valor `0` desactiva esa limpieza.
+Los respaldos PostgreSQL con más de 30 días se eliminan después de crear uno nuevo. `NEXORA_BACKUP_RETENTION_DAYS=0` desactiva esa limpieza.
 
 Para restaurar PostgreSQL manualmente:
 
 ```bash
 gunzip -c /opt/nexora-ai/backups/postgres-FECHA.sql.gz | \
-  docker compose -f docker-compose.vps.yml exec -T postgres \
+  docker compose --env-file .env.production -f docker-compose.vps.yml exec -T postgres \
   psql -U nexora -d nexora_ai
 ```
 
-Hazlo solo si la actualización incluyó una migración incompatible y después de confirmar el archivo correcto.
+Hazlo solo después de confirmar que realmente es necesario; las migraciones de 0.9 están diseñadas para ser aditivas.
 
 ## Verificación posterior
 
 ```bash
-nexora status
-nexora verify
-nexora logs 100
+sudo nexora status
+sudo nexora verify
+sudo nexora logs 100
 curl https://apighostnexoraai.duckdns.org/api/mobile/status
 ```
 
