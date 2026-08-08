@@ -43,24 +43,51 @@ create table if not exists app_password_credentials (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists app_auth_link_authorizations (
+  id uuid primary key,
+  user_id uuid not null references app_users(id) on delete cascade,
+  provider text not null check (provider in ('google', 'facebook', 'discord')),
+  provider_account_id text not null,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists app_auth_link_authorizations_lookup_idx
+  on app_auth_link_authorizations(user_id, provider, provider_account_id, expires_at);
+create index if not exists app_auth_link_authorizations_expiry_idx
+  on app_auth_link_authorizations(expires_at);
+
 create or replace function nexora_prevent_implicit_auth_link()
 returns trigger
 language plpgsql
 as $$
+declare
+  explicit_link boolean;
 begin
-  if exists (
+  select exists (
     select 1
-      from app_password_credentials p
-     where p.user_id = new.user_id
-  ) or exists (
-    select 1
-      from app_auth_accounts a
-     where a.user_id = new.user_id
-       and (
-         a.provider <> new.provider
-         or a.provider_account_id <> new.provider_account_id
-       )
-  ) then
+      from app_auth_link_authorizations l
+     where l.user_id = new.user_id
+       and l.provider = new.provider
+       and l.provider_account_id = new.provider_account_id
+       and l.expires_at > now()
+  ) into explicit_link;
+
+  if (
+    exists (
+      select 1
+        from app_password_credentials p
+       where p.user_id = new.user_id
+    ) or exists (
+      select 1
+        from app_auth_accounts a
+       where a.user_id = new.user_id
+         and a.id <> new.id
+         and (
+           a.provider <> new.provider
+           or a.provider_account_id <> new.provider_account_id
+         )
+    )
+  ) and not explicit_link then
     raise exception using
       errcode = '23514',
       message = 'implicit auth account linking is not allowed';
