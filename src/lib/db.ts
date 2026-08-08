@@ -13,9 +13,12 @@ create table if not exists app_users (
   name text not null,
   email text,
   image_url text,
+  email_verified_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+alter table app_users
+  add column if not exists email_verified_at timestamptz;
 create unique index if not exists app_users_email_unique_idx
   on app_users(lower(email))
   where email is not null;
@@ -81,14 +84,37 @@ create table if not exists app_auth_sessions (
   refresh_token_hash char(64) not null unique,
   access_expires_at timestamptz not null,
   refresh_expires_at timestamptz not null,
+  device_name text not null default 'Android',
+  user_agent text,
   revoked_at timestamptz,
   created_at timestamptz not null default now(),
   last_used_at timestamptz not null default now()
 );
+alter table app_auth_sessions
+  add column if not exists device_name text not null default 'Android';
+alter table app_auth_sessions
+  add column if not exists user_agent text;
 create index if not exists app_auth_sessions_user_idx
   on app_auth_sessions(user_id, last_used_at desc);
 create index if not exists app_auth_sessions_expiry_idx
   on app_auth_sessions(refresh_expires_at);
+
+create table if not exists app_account_codes (
+  id uuid primary key,
+  user_id uuid not null references app_users(id) on delete cascade,
+  purpose text not null check (purpose in ('verify_email', 'reset_password')),
+  email text not null,
+  code_hash char(64) not null,
+  attempts integer not null default 0,
+  expires_at timestamptz not null,
+  consumed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists app_account_codes_user_purpose_idx
+  on app_account_codes(user_id, purpose, created_at desc);
+create index if not exists app_account_codes_expiry_idx
+  on app_account_codes(expires_at)
+  where consumed_at is null;
 
 create table if not exists mobile_oauth_states (
   state_hash char(64) primary key,
