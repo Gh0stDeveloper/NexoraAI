@@ -155,6 +155,21 @@ create table if not exists mobile_oauth_states (
 create index if not exists mobile_oauth_states_expiry_idx
   on mobile_oauth_states(expires_at);
 
+create table if not exists mobile_account_link_states (
+  state_hash char(64) primary key,
+  user_id uuid not null references app_users(id) on delete cascade,
+  provider text not null check (provider in ('google', 'facebook', 'discord')),
+  redirect_uri text not null,
+  client_state text not null,
+  code_challenge varchar(128) not null,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists mobile_account_link_states_expiry_idx
+  on mobile_account_link_states(expires_at);
+create index if not exists mobile_account_link_states_user_idx
+  on mobile_account_link_states(user_id, created_at desc);
+
 create table if not exists mobile_auth_codes (
   code_hash char(64) primary key,
   user_id uuid not null references app_users(id) on delete cascade,
