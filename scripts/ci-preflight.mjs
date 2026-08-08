@@ -124,7 +124,7 @@ function excludes(file, tokens) {
 }
 
 const pkg = JSON.parse(content("package.json") || "{}");
-if (pkg.version !== "0.6.0") errors.push("package.json version must remain aligned with package-lock at 0.6.0");
+if (pkg.version !== "0.7.0") errors.push("package.json version must be 0.7.0");
 if (pkg.dependencies?.pg !== "^8.16.3") errors.push("pg must remain pinned to the reviewed 8.16 line");
 if (pkg.dependencies?.next !== "16.3.0") errors.push("Next.js must remain on reviewed 16.3.0");
 if (pkg.dependencies?.react !== "19.2.8") errors.push("React must remain on reviewed 19.2.8");
@@ -156,6 +156,7 @@ includes("src/lib/db.ts", [
   "app_users",
   "app_auth_sessions",
   "mobile_user_chat_state",
+  "nexora_prevent_implicit_auth_link",
   "android_build_jobs",
   "chat_jobs",
 ]);
