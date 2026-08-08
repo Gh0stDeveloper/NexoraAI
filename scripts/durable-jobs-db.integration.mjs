@@ -19,8 +19,10 @@ test("creates durable chat, Android build and mobile account tables in PostgreSQ
       where table_schema = 'public'
         and table_name in (
           'app_account_codes',
+          'app_auth_link_authorizations',
           'app_auth_sessions',
           'app_users',
+          'mobile_account_link_states',
           'android_build_jobs',
           'chat_jobs'
         )
@@ -31,9 +33,11 @@ test("creates durable chat, Android build and mobile account tables in PostgreSQ
     [
       "android_build_jobs",
       "app_account_codes",
+      "app_auth_link_authorizations",
       "app_auth_sessions",
       "app_users",
       "chat_jobs",
+      "mobile_account_link_states",
     ],
   );
 
@@ -125,6 +129,50 @@ test("account codes enforce purpose and session metadata defaults", async () => 
       [randomUUID(), userId, `ci-${userId}@example.test`, "e".repeat(64)],
     ),
   );
+
+  await databaseQuery(`delete from app_users where id = $1`, [userId]);
+});
+
+test("social identities require an explicit short-lived link authorization", async () => {
+  const userId = randomUUID();
+  await databaseQuery(
+    `insert into app_users (id, name, email) values ($1, 'Linked CI', $2)`,
+    [userId, `linked-${userId}@example.test`],
+  );
+  await databaseQuery(
+    `insert into app_password_credentials (user_id, password_salt, password_hash)
+     values ($1, 'salt', 'hash')`,
+    [userId],
+  );
+
+  await assert.rejects(
+    databaseQuery(
+      `insert into app_auth_accounts (id, user_id, provider, provider_account_id)
+       values ($1, $2, 'google', 'ci-google')`,
+      [randomUUID(), userId],
+    ),
+    /implicit auth account linking is not allowed/,
+  );
+
+  const authorizationId = randomUUID();
+  await databaseQuery(
+    `insert into app_auth_link_authorizations (
+       id, user_id, provider, provider_account_id, expires_at
+     ) values ($1, $2, 'google', 'ci-google', now() + interval '1 minute')`,
+    [authorizationId, userId],
+  );
+  const accountId = randomUUID();
+  await databaseQuery(
+    `insert into app_auth_accounts (id, user_id, provider, provider_account_id)
+     values ($1, $2, 'google', 'ci-google')`,
+    [accountId, userId],
+  );
+  const linked = await databaseQuery(
+    `select provider, provider_account_id from app_auth_accounts where id = $1`,
+    [accountId],
+  );
+  assert.equal(linked.rows[0]?.provider, "google");
+  assert.equal(linked.rows[0]?.provider_account_id, "ci-google");
 
   await databaseQuery(`delete from app_users where id = $1`, [userId]);
 });
