@@ -5,27 +5,13 @@ import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -46,7 +32,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -82,6 +67,27 @@ fun NexoraAuthenticatedRoot() {
         authError = null
         scope.launch(Dispatchers.IO) {
             runCatching { cloudSync.sync(authStore) }
+        }
+    }
+
+    fun updateVisibleUser(user: NexoraUser) {
+        val current = session ?: return
+        val updated = current.copy(user = user)
+        authStore.saveSession(updated)
+        session = updated
+    }
+
+    fun logoutCurrentAccount() {
+        accountSheetVisible = false
+        loading = true
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching { cloudSync.push(authStore) }
+                runCatching { AuthApi.logout(authStore) }
+            }
+            clearLocalChats()
+            session = null
+            loading = false
         }
     }
 
@@ -212,6 +218,34 @@ fun NexoraAuthenticatedRoot() {
                         loading = false
                     }
                 },
+                onPasswordResetRequest = { email ->
+                    loading = true
+                    authError = null
+                    scope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching { AuthApi.requestPasswordReset(email) }
+                        }
+                        result.onFailure {
+                            authError = it.message ?: "No se pudo solicitar el código."
+                        }
+                        loading = false
+                    }
+                },
+                onPasswordResetConfirm = { email, code, password ->
+                    loading = true
+                    authError = null
+                    scope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching { AuthApi.confirmPasswordReset(email, code, password) }
+                        }
+                        result.onSuccess {
+                            authError = "Contraseña actualizada. Ya puedes iniciar sesión."
+                        }.onFailure {
+                            authError = it.message ?: "No se pudo cambiar la contraseña."
+                        }
+                        loading = false
+                    }
+                },
                 onClearError = { authError = null },
             )
         } else {
@@ -232,21 +266,11 @@ fun NexoraAuthenticatedRoot() {
                     onDismissRequest = { accountSheetVisible = false },
                     containerColor = NexoraSurface,
                 ) {
-                    AccountSheet(
-                        user = activeSession.user,
-                        onLogout = {
-                            accountSheetVisible = false
-                            loading = true
-                            scope.launch {
-                                withContext(Dispatchers.IO) {
-                                    runCatching { cloudSync.push(authStore) }
-                                    runCatching { AuthApi.logout(authStore) }
-                                }
-                                clearLocalChats()
-                                session = null
-                                loading = false
-                            }
-                        },
+                    AccountCenter(
+                        authStore = authStore,
+                        initialUser = activeSession.user,
+                        onUserUpdated = ::updateVisibleUser,
+                        onLogout = ::logoutCurrentAccount,
                     )
                 }
             }
@@ -287,91 +311,6 @@ private fun AccountFloatingChip(
                 fontSize = 15.sp,
             )
         }
-    }
-}
-
-@Composable
-private fun AccountSheet(
-    user: NexoraUser,
-    onLogout: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp)
-            .navigationBarsPadding(),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Text("Cuenta Nexora", fontSize = 21.sp, fontWeight = FontWeight.Black)
-        Card(
-            colors = CardDefaults.cardColors(containerColor = NexoraSurfaceElevated),
-            shape = RoundedCornerShape(22.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(13.dp),
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = NexoraAccent.copy(alpha = 0.16f),
-                ) {
-                    Box(modifier = Modifier.size(46.dp), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Person, contentDescription = null, tint = NexoraAccent)
-                    }
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        user.name,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        user.email ?: "Cuenta social",
-                        color = NexoraMuted,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-
-        Surface(
-            color = NexoraAccent.copy(alpha = 0.08f),
-            border = BorderStroke(1.dp, NexoraAccent.copy(alpha = 0.18f)),
-            shape = RoundedCornerShape(18.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Row(
-                modifier = Modifier.padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Icon(Icons.Default.CloudDone, contentDescription = null, tint = NexoraAccent)
-                Column {
-                    Text("Sincronización activa", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    Text(
-                        "Chats y proyectos se respaldan en tu cuenta.",
-                        color = NexoraMuted,
-                        fontSize = 11.sp,
-                    )
-                }
-            }
-        }
-
-        Button(
-            onClick = onLogout,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-        ) {
-            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
-            Spacer(Modifier.size(8.dp))
-            Text("Cerrar sesión", fontWeight = FontWeight.Bold)
-        }
-        Spacer(Modifier.size(8.dp))
     }
 }
 
