@@ -45,8 +45,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -104,6 +104,8 @@ private fun NexoraChatApp() {
     var historyRevision by remember { mutableIntStateOf(1) }
     var buildMessage by remember { mutableStateOf<ChatMessage?>(null) }
     var buildAppName by rememberSaveable { mutableStateOf("") }
+    var editMessage by remember { mutableStateOf<ChatMessage?>(null) }
+    var editText by rememberSaveable { mutableStateOf("") }
     var userBuildsEnabled by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val snackbarHostState = remember { SnackbarHostState() }
@@ -222,6 +224,207 @@ private fun NexoraChatApp() {
         saveAll()
     }
 
+    fun nextVariantIndex(groupId: String): Int = sessions
+        .flatMap { it.messages }
+        .filter { it.variantGroupId == groupId }
+        .mapNotNull { it.variantIndex }
+        .maxOrNull()
+        ?.plus(1)
+        ?: 1
+
+    fun ensureVariantGroup(message: ChatMessage): Pair<String, Int> {
+        val groupId = message.variantGroupId ?: UUID.randomUUID().toString()
+        if (message.variantGroupId == null) {
+            val index = messages.indexOfFirst { it.id == message.id }
+            if (index >= 0) {
+                messages[index] = messages[index].copy(
+                    updatedAt = System.currentTimeMillis(),
+                    variantGroupId = groupId,
+                    variantIndex = 1,
+                )
+                persistCurrent()
+            }
+        }
+        return groupId to nextVariantIndex(groupId)
+    }
+
+    fun createBranchSession(
+        prefix: List<ChatMessage>,
+        sourceMessageId: String,
+        suffix: String,
+    ): ChatSession? {
+        if (loading) return null
+        persistCurrent()
+        val current = sessions.firstOrNull { it.id == activeSessionId } ?: return null
+        val now = System.currentTimeMillis()
+        val branch = current.copy(
+            id = UUID.randomUUID().toString(),
+            title = "${current.title.take(42)} · $suffix",
+            createdAt = now,
+            updatedAt = now,
+            isPinned = false,
+            parentSessionId = current.id,
+            branchedFromMessageId = sourceMessageId,
+            messages = prefix,
+        )
+        sessions.add(0, branch)
+        saveAll()
+        selectSession(branch)
+        return branch
+    }
+
+    fun queueAssistantResponse(
+        userText: String,
+        sentAttachments: List<PendingAttachment>,
+        addUserMessage: Boolean,
+        variantGroupId: String? = null,
+        variantIndex: Int? = null,
+    ) {
+        val requestModel = selectedModel
+        val requestIntelligence = intelligence
+        val requestValidation = validateCode
+        val session = sessions.firstOrNull { it.id == activeSessionId }
+        val conversationId = activeSessionId
+        val requestId = UUID.randomUUID().toString()
+        val requestToken = DurableWorkScheduler.newRequestToken()
+        val startedAt = System.currentTimeMillis()
+        if (addUserMessage) {
+            messages.add(
+                ChatMessage(
+                    role = "user",
+                    content = userText,
+                    attachmentNames = sentAttachments.map { it.name },
+                ),
+            )
+        }
+        messages.add(
+            ChatMessage(
+                id = "assistant-$requestId",
+                role = "assistant",
+                content = "",
+                createdAt = startedAt,
+                updatedAt = startedAt,
+                requestId = requestId,
+                requestStatus = RequestStatus.QUEUED,
+                variantGroupId = variantGroupId,
+                variantIndex = variantIndex,
+            ),
+        )
+        prompt = ""
+        attachments.clear()
+        thinkingProgress.clear()
+        composerPanel = null
+        loading = true
+        requestStartedAt = startedAt
+        thinkingElapsedMs = 0L
+        persistCurrent()
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    pendingWork.saveChat(
+                        PendingChatRequest(
+                            requestId = requestId,
+                            requestToken = requestToken,
+                            conversationId = conversationId,
+                            projectId = session?.projectId,
+                            message = userText,
+                            model = requestModel,
+                            intelligence = requestIntelligence,
+                            validateCode = requestValidation,
+                            attachments = sentAttachments,
+                        ),
+                    )
+                }
+                DurableWorkScheduler.enqueueChat(context.applicationContext, requestId)
+            } catch (error: Exception) {
+                val index = messages.indexOfFirst { it.requestId == requestId }
+                if (index >= 0) {
+                    messages[index] = messages[index].copy(
+                        content = error.message ?: "No se pudo guardar la solicitud pendiente.",
+                        updatedAt = System.currentTimeMillis(),
+                        requestStatus = RequestStatus.FAILED,
+                    )
+                }
+                loading = false
+                persistCurrent()
+            }
+        }
+    }
+
+    fun branchFromMessage(message: ChatMessage) {
+        val index = messages.indexOfFirst { it.id == message.id }
+        if (index < 0 || loading) return
+        val branch = createBranchSession(
+            prefix = messages.take(index + 1),
+            sourceMessageId = message.id,
+            suffix = "rama",
+        ) ?: return
+        scope.launch {
+            snackbarHostState.showSnackbar("Rama creada: ${branch.title}")
+        }
+    }
+
+    fun regenerateMessage(message: ChatMessage) {
+        if (loading || message.role != "assistant") return
+        val assistantIndex = messages.indexOfFirst { it.id == message.id }
+        val userIndex = (assistantIndex - 1 downTo 0).firstOrNull { messages[it].role == "user" } ?: return
+        val userMessage = messages[userIndex]
+        if (userMessage.attachmentNames.isNotEmpty()) {
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    "Para conservar los archivos originales, regenera desde un mensaje sin adjuntos.",
+                )
+            }
+            return
+        }
+        val (groupId, nextIndex) = ensureVariantGroup(message)
+        createBranchSession(
+            prefix = messages.take(userIndex + 1),
+            sourceMessageId = userMessage.id,
+            suffix = "versión $nextIndex",
+        ) ?: return
+        queueAssistantResponse(
+            userText = userMessage.content,
+            sentAttachments = emptyList(),
+            addUserMessage = false,
+            variantGroupId = groupId,
+            variantIndex = nextIndex,
+        )
+    }
+
+    fun editUserMessage(message: ChatMessage, edited: String) {
+        if (loading || message.role != "user") return
+        if (message.attachmentNames.isNotEmpty()) {
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    "La edición de mensajes con adjuntos se hará en una fase posterior para no perder archivos.",
+                )
+            }
+            return
+        }
+        val userIndex = messages.indexOfFirst { it.id == message.id }
+        if (userIndex < 0) return
+        val followingAssistant = messages
+            .drop(userIndex + 1)
+            .takeWhile { it.role != "user" }
+            .firstOrNull { it.role == "assistant" }
+        val variant = followingAssistant?.let(::ensureVariantGroup)
+        val groupId = variant?.first ?: UUID.randomUUID().toString()
+        val nextIndex = variant?.second ?: 1
+        createBranchSession(
+            prefix = messages.take(userIndex),
+            sourceMessageId = message.id,
+            suffix = "editada",
+        ) ?: return
+        queueAssistantResponse(
+            userText = edited.trim(),
+            sentAttachments = emptyList(),
+            addUserMessage = true,
+            variantGroupId = groupId,
+            variantIndex = nextIndex,
+        )
+    }
+
     DisposableEffect(store) {
         val observer = store.observe { historyRevision += 1 }
         onDispose { observer.close() }
@@ -267,9 +470,7 @@ private fun NexoraChatApp() {
         thinkingProgress.clear()
         thinkingProgress.addAll(pending?.trace.orEmpty())
         requestStartedAt = pending?.createdAt ?: 0L
-        if (!loading) {
-            thinkingElapsedMs = active.messages.lastOrNull()?.elapsedMs ?: 0L
-        }
+        if (!loading) thinkingElapsedMs = active.messages.lastOrNull()?.elapsedMs ?: 0L
     }
 
     LaunchedEffect(activeSessionId) {
@@ -283,9 +484,7 @@ private fun NexoraChatApp() {
             it.requestStatus != RequestStatus.QUEUED &&
                 it.requestStatus != RequestStatus.PROCESSING
         } + if (loading) 1 else 0
-        if (renderedMessages > 0) {
-            listState.animateScrollToItem(renderedMessages - 1)
-        }
+        if (renderedMessages > 0) listState.animateScrollToItem(renderedMessages - 1)
     }
 
     LaunchedEffect(loading, requestStartedAt) {
@@ -377,9 +576,7 @@ private fun NexoraChatApp() {
                     snackbarHost = { SnackbarHost(snackbarHostState) },
                     topBar = {
                         TopAppBar(
-                            colors = TopAppBarDefaults.topAppBarColors(
-                                containerColor = Color(0xFF0D0D0D),
-                            ),
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0D0D0D)),
                             navigationIcon = {
                                 IconButton(onClick = { scope.launch { drawerState.open() } }) {
                                     Icon(Icons.Default.Menu, contentDescription = "Abrir historial")
@@ -463,76 +660,11 @@ private fun NexoraChatApp() {
                                 val text = prompt.trim().ifBlank {
                                     "Analiza el contenido adjunto y responde con claridad."
                                 }
-                                val sentAttachments = attachments.toList()
-                                val requestModel = selectedModel
-                                val requestIntelligence = intelligence
-                                val requestValidation = validateCode
-                                val session = sessions.firstOrNull { it.id == activeSessionId }
-                                val conversationId = activeSessionId
-                                val requestId = UUID.randomUUID().toString()
-                                val requestToken = DurableWorkScheduler.newRequestToken()
-                                val startedAt = System.currentTimeMillis()
-                                messages.add(
-                                    ChatMessage(
-                                        role = "user",
-                                        content = text,
-                                        attachmentNames = sentAttachments.map { it.name },
-                                    ),
+                                queueAssistantResponse(
+                                    userText = text,
+                                    sentAttachments = attachments.toList(),
+                                    addUserMessage = true,
                                 )
-                                messages.add(
-                                    ChatMessage(
-                                        id = "assistant-$requestId",
-                                        role = "assistant",
-                                        content = "",
-                                        createdAt = startedAt,
-                                        updatedAt = startedAt,
-                                        requestId = requestId,
-                                        requestStatus = RequestStatus.QUEUED,
-                                    ),
-                                )
-                                prompt = ""
-                                attachments.clear()
-                                thinkingProgress.clear()
-                                composerPanel = null
-                                loading = true
-                                requestStartedAt = startedAt
-                                thinkingElapsedMs = 0L
-                                persistCurrent()
-                                scope.launch {
-                                    try {
-                                        withContext(Dispatchers.IO) {
-                                            pendingWork.saveChat(
-                                                PendingChatRequest(
-                                                    requestId = requestId,
-                                                    requestToken = requestToken,
-                                                    conversationId = conversationId,
-                                                    projectId = session?.projectId,
-                                                    message = text,
-                                                    model = requestModel,
-                                                    intelligence = requestIntelligence,
-                                                    validateCode = requestValidation,
-                                                    attachments = sentAttachments,
-                                                ),
-                                            )
-                                        }
-                                        DurableWorkScheduler.enqueueChat(
-                                            context.applicationContext,
-                                            requestId,
-                                        )
-                                    } catch (error: Exception) {
-                                        val index = messages.indexOfFirst { it.requestId == requestId }
-                                        if (index >= 0) {
-                                            messages[index] = messages[index].copy(
-                                                content = error.message
-                                                    ?: "No se pudo guardar la solicitud pendiente.",
-                                                updatedAt = System.currentTimeMillis(),
-                                                requestStatus = RequestStatus.FAILED,
-                                            )
-                                        }
-                                        loading = false
-                                        persistCurrent()
-                                    }
-                                }
                             },
                         )
                     },
@@ -543,11 +675,7 @@ private fun NexoraChatApp() {
                             .padding(contentPadding)
                             .background(
                                 Brush.verticalGradient(
-                                    listOf(
-                                        Color(0xFF10201B),
-                                        NexoraBackground,
-                                        Color(0xFF0D0D0D),
-                                    ),
+                                    listOf(Color(0xFF10201B), NexoraBackground, Color(0xFF0D0D0D)),
                                 ),
                             ),
                     ) {
@@ -561,7 +689,7 @@ private fun NexoraChatApp() {
                                 state = listState,
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 18.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
                                 items(
                                     messages.filterNot {
@@ -570,23 +698,57 @@ private fun NexoraChatApp() {
                                     },
                                     key = { it.id },
                                 ) { message ->
-                                    MessageBubble(
-                                        message = message,
-                                        userBuildsEnabled = userBuildsEnabled,
-                                        onBuild = { selected ->
-                                            buildMessage = selected
-                                            buildAppName = sessions
-                                                .firstOrNull { it.id == activeSessionId }
-                                                ?.title
-                                                ?.takeUnless { it == "Nuevo chat" }
-                                                ?: "Aplicación Nexora"
-                                        },
-                                        onDownload = { url ->
-                                            context.startActivity(
-                                                Intent(Intent.ACTION_VIEW, Uri.parse(url)),
-                                            )
-                                        },
-                                    )
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        MessageBubble(
+                                            message = message,
+                                            userBuildsEnabled = userBuildsEnabled,
+                                            onBuild = { selected ->
+                                                buildMessage = selected
+                                                buildAppName = sessions
+                                                    .firstOrNull { it.id == activeSessionId }
+                                                    ?.title
+                                                    ?.takeUnless { it == "Nuevo chat" }
+                                                    ?: "Aplicación Nexora"
+                                            },
+                                            onDownload = { url ->
+                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                            },
+                                        )
+
+                                        val variants = message.variantGroupId?.let { groupId ->
+                                            sessions.mapNotNull { candidate ->
+                                                val variant = candidate.messages.firstOrNull {
+                                                    it.variantGroupId == groupId && it.role == "assistant"
+                                                } ?: return@mapNotNull null
+                                                Triple(candidate, variant.variantIndex ?: Int.MAX_VALUE, variant.id)
+                                            }.sortedBy { it.second }
+                                        }.orEmpty()
+                                        val position = variants
+                                            .indexOfFirst { it.first.id == activeSessionId }
+                                            .takeIf { it >= 0 }
+                                            ?.plus(1)
+
+                                        ChatBranchActions(
+                                            message = message,
+                                            busy = loading,
+                                            variantPosition = position,
+                                            variantTotal = variants.size,
+                                            onEdit = {
+                                                editMessage = message
+                                                editText = message.content
+                                            },
+                                            onRegenerate = { regenerateMessage(message) },
+                                            onBranch = { branchFromMessage(message) },
+                                            onPreviousVariant = {
+                                                val target = position?.minus(2)?.let(variants::getOrNull)?.first
+                                                if (target != null) selectSession(target)
+                                            },
+                                            onNextVariant = {
+                                                val target = position?.let(variants::getOrNull)?.first
+                                                if (target != null) selectSession(target)
+                                            },
+                                        )
+                                    }
                                 }
                                 if (loading) {
                                     item {
@@ -629,6 +791,43 @@ private fun NexoraChatApp() {
                 },
                 dismissButton = {
                     TextButton(onClick = { projectDialogVisible = false }) { Text("Cancelar") }
+                },
+            )
+        }
+
+        editMessage?.let { target ->
+            AlertDialog(
+                onDismissRequest = { editMessage = null },
+                title = { Text("Editar mensaje") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "Nexora creará una rama nueva. La conversación original no se modificará.",
+                            color = NexoraMuted,
+                            fontSize = 12.sp,
+                        )
+                        OutlinedTextField(
+                            value = editText,
+                            onValueChange = { editText = it.take(8_000) },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 3,
+                            maxLines = 8,
+                            label = { Text("Mensaje") },
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val edited = editText.trim()
+                            editMessage = null
+                            if (edited.isNotBlank()) editUserMessage(target, edited)
+                        },
+                        enabled = editText.isNotBlank() && !loading,
+                    ) { Text("Crear rama") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { editMessage = null }) { Text("Cancelar") }
                 },
             )
         }
@@ -698,10 +897,7 @@ private fun NexoraChatApp() {
                                             ),
                                         )
                                     }
-                                    DurableWorkScheduler.enqueueBuild(
-                                        context.applicationContext,
-                                        requestId,
-                                    )
+                                    DurableWorkScheduler.enqueueBuild(context.applicationContext, requestId)
                                 } catch (error: Exception) {
                                     store.updateAndroidBuild(
                                         conversationId,
