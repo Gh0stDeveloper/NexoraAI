@@ -17,6 +17,22 @@ data class NexoraAuthSession(
     val refreshExpiresAt: Long,
 )
 
+data class NexoraAccountSession(
+    val id: String,
+    val deviceName: String,
+    val createdAt: String,
+    val lastUsedAt: String,
+    val current: Boolean,
+)
+
+data class NexoraAccountOverview(
+    val user: NexoraUser,
+    val emailVerified: Boolean,
+    val providers: List<String>,
+    val hasPassword: Boolean,
+    val sessions: List<NexoraAccountSession>,
+)
+
 data class PendingOAuth(
     val provider: String,
     val state: String,
@@ -28,6 +44,8 @@ enum class AuthScreenMode {
     WELCOME,
     LOGIN,
     REGISTER,
+    FORGOT_PASSWORD,
+    RESET_PASSWORD,
 }
 
 internal fun NexoraAuthSession.toJson(): JSONObject = JSONObject()
