@@ -21,6 +21,14 @@ const requiredFiles = [
   "src/app/terms/page.tsx",
   "src/app/privacy/page.tsx",
   "src/app/download/route.ts",
+  "src/app/api/auth/mobile/start/route.ts",
+  "src/app/api/auth/mobile/callback/[provider]/route.ts",
+  "src/app/api/auth/mobile/exchange/route.ts",
+  "src/app/api/auth/mobile/email/route.ts",
+  "src/app/api/auth/mobile/refresh/route.ts",
+  "src/app/api/auth/mobile/me/route.ts",
+  "src/app/api/auth/mobile/logout/route.ts",
+  "src/app/api/mobile/user/state/route.ts",
   "src/app/api/mobile/chat/route.ts",
   "src/app/api/mobile/chat/stream/route.ts",
   "src/app/api/mobile/chat/jobs/route.ts",
@@ -34,6 +42,7 @@ const requiredFiles = [
   "src/lib/android-release.ts",
   "src/lib/chat-jobs.ts",
   "src/lib/db.ts",
+  "src/lib/mobile-auth.ts",
   "src/lib/mobile-chat.ts",
   "scripts/mobile-chat-contract.test.mjs",
   "scripts/durable-jobs-contract.test.mjs",
@@ -54,6 +63,12 @@ const requiredFiles = [
   `${androidBase}/app/src/main/cpp/CMakeLists.txt`,
   nativeCore,
   `${androidPackage}/ApiClient.kt`,
+  `${androidPackage}/AuthApi.kt`,
+  `${androidPackage}/AuthModels.kt`,
+  `${androidPackage}/AuthScreen.kt`,
+  `${androidPackage}/AuthStore.kt`,
+  `${androidPackage}/AuthenticatedRoot.kt`,
+  `${androidPackage}/CloudChatSync.kt`,
   `${androidPackage}/ChatComponents.kt`,
   `${androidPackage}/ChatStore.kt`,
   `${androidPackage}/DurableWork.kt`,
@@ -73,6 +88,7 @@ const requiredFiles = [
   "docs/README-INSTALL.md",
   "docs/README-UPDATE.md",
   "docs/ANDROID-BUILD-VPS.md",
+  "docs/ANDROID-AUTH.md",
   "docs/DURABLE-CHAT-AND-USER-BUILDS.md",
   "docs/SUPPORT-MATRIX.md",
   "docs/SANDBOX.md",
@@ -108,7 +124,7 @@ function excludes(file, tokens) {
 }
 
 const pkg = JSON.parse(content("package.json") || "{}");
-if (pkg.version !== "0.6.0") errors.push("package.json version must be 0.6.0");
+if (pkg.version !== "0.6.0") errors.push("package.json version must remain aligned with package-lock at 0.6.0");
 if (pkg.dependencies?.pg !== "^8.16.3") errors.push("pg must remain pinned to the reviewed 8.16 line");
 if (pkg.dependencies?.next !== "16.3.0") errors.push("Next.js must remain on reviewed 16.3.0");
 if (pkg.dependencies?.react !== "19.2.8") errors.push("React must remain on reviewed 19.2.8");
@@ -135,7 +151,26 @@ includes("src/app/api/mobile/chat/stream/route.ts", [
 ]);
 includes("src/app/api/mobile/chat/jobs/route.ts", ["after", "runChatJobInBackground", "status: 202"]);
 includes("src/lib/chat-jobs.ts", ["chat_jobs", "access_token_hash", "make_interval", "runAgent"]);
-includes("src/lib/db.ts", ["DATABASE_URL", "android_build_jobs", "chat_jobs"]);
+includes("src/lib/db.ts", [
+  "DATABASE_URL",
+  "app_users",
+  "app_auth_sessions",
+  "mobile_user_chat_state",
+  "android_build_jobs",
+  "chat_jobs",
+]);
+includes("src/lib/mobile-auth.ts", [
+  "scrypt",
+  "code_challenge",
+  "refresh_token_hash",
+  "authenticateMobileRequest",
+  "nexoraai://auth/callback",
+]);
+includes("src/app/api/mobile/user/state/route.ts", [
+  "authenticateMobileRequest",
+  "mobile_user_chat_state",
+  "MAX_STATE_BYTES",
+]);
 includes("src/lib/android-builds.ts", [
   "ENABLE_USER_ANDROID_BUILDS",
   "USER_BUILD_MAX_PER_HOUR",
@@ -181,8 +216,8 @@ includes("sandbox/server.mjs", [
 ]);
 
 includes(`${androidBase}/app/build.gradle.kts`, [
-  'versionCode = 8',
-  'versionName = "0.6.0"',
+  'versionCode = 9',
+  'versionName = "0.7.0"',
   '"armeabi-v7a", "arm64-v8a", "x86", "x86_64"',
   "externalNativeBuild",
   "isMinifyEnabled = true",
@@ -206,6 +241,33 @@ includes(`${androidPackage}/ApiClient.kt`, [
 ]);
 excludes(`${androidPackage}/ApiClient.kt`, [
   '.put("projectId", projectId ?: JSONObject.NULL)',
+]);
+includes(`${androidPackage}/AuthApi.kt`, [
+  "code_challenge",
+  "Authorization",
+  "ensureFreshSession",
+  "api/auth/mobile/exchange",
+]);
+includes(`${androidPackage}/AuthStore.kt`, [
+  "AndroidKeyStore",
+  "AES/GCM/NoPadding",
+  "AuthCallbackBus",
+]);
+includes(`${androidPackage}/AuthenticatedRoot.kt`, [
+  "CloudChatSync",
+  "clearLocalChats",
+  "NexoraAuthenticatedRoot",
+]);
+includes(`${androidPackage}/CloudChatSync.kt`, [
+  "mergePayload",
+  "mobile",
+  "nexora_chat_history",
+]);
+includes(`${androidBase}/app/src/main/AndroidManifest.xml`, [
+  'android:scheme="nexoraai"',
+  'android:host="auth"',
+  'android:path="/callback"',
+  'android:launchMode="singleTop"',
 ]);
 includes(`${androidPackage}/Models.kt`, [
   "ChatProject",
@@ -269,8 +331,11 @@ includes("docker-compose.vps.yml", [
   "cap_drop",
 ]);
 includes(".env.vps.example", [
-  "APP_VERSION=0.6.0",
+  "APP_VERSION=0.7.0",
   "ANDROID_APK_URL=",
+  "GOOGLE_CLIENT_ID=",
+  "FACEBOOK_CLIENT_ID=",
+  "DISCORD_CLIENT_ID=",
   "ALLOW_CODE_EXECUTION=false",
   "SANDBOX_RUNNER_TOKEN=",
   "SANDBOX_MAX_CONCURRENT_JOBS=2",
