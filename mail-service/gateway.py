@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import hashlib
 import hmac
 import json
 import os
@@ -27,6 +28,14 @@ def required(name: str) -> str:
     return value
 
 
+def webhook_secret() -> str:
+    explicit = env("AUTH_EMAIL_WEBHOOK_SECRET")
+    if explicit:
+        return explicit
+    database_secret = required("POSTGRES_PASSWORD")
+    return hashlib.sha256(f"nexora-mail:{database_secret}".encode("utf-8")).hexdigest()
+
+
 def smtp_health() -> bool:
     try:
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=3) as client:
@@ -37,8 +46,6 @@ def smtp_health() -> bool:
 
 
 def send_payload(payload: dict) -> None:
-    webhook_secret = required("AUTH_EMAIL_WEBHOOK_SECRET")
-    _ = webhook_secret
     mail_from = required("MAIL_FROM")
     recipient = str(payload.get("to") or "").strip()
     subject = str(payload.get("subject") or "").strip()
@@ -97,10 +104,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/send":
             self.respond(404, {"ok": False})
             return
-        secret = env("AUTH_EMAIL_WEBHOOK_SECRET")
+        secret = webhook_secret()
         provided = self.headers.get("Authorization", "")
-        expected = f"Bearer {secret}" if secret else ""
-        if not secret or not hmac.compare_digest(provided, expected):
+        expected = f"Bearer {secret}"
+        if not hmac.compare_digest(provided, expected):
             self.respond(401, {"ok": False, "error": "unauthorized"})
             return
 
