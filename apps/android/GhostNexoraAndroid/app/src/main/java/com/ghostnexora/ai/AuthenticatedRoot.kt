@@ -69,6 +69,13 @@ fun NexoraAuthenticatedRoot() {
     var pushJob by remember { mutableStateOf<Job?>(null) }
     val callback by AuthCallbackBus.callback.collectAsState()
 
+    fun clearLocalChats() {
+        context.getSharedPreferences(CHAT_PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
+    }
+
     fun finishLogin(next: NexoraAuthSession) {
         authStore.saveSession(next)
         session = next
@@ -89,7 +96,10 @@ fun NexoraAuthenticatedRoot() {
             }.getOrNull()
         }
         session = validated
-        if (validated == null) authStore.clearSession()
+        if (validated == null) {
+            authStore.clearSession()
+            clearLocalChats()
+        }
         loading = false
         if (validated != null) {
             withContext(Dispatchers.IO) {
@@ -135,23 +145,27 @@ fun NexoraAuthenticatedRoot() {
     }
 
     DisposableEffect(session?.user?.id) {
-        if (session == null) return@DisposableEffect onDispose { }
-        val preferences = context.getSharedPreferences("nexora_chat_history", Context.MODE_PRIVATE)
-        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == "sessions" || key == "projects") {
-                pushJob?.cancel()
-                pushJob = scope.launch {
-                    delay(CLOUD_PUSH_DEBOUNCE_MS)
-                    withContext(Dispatchers.IO) {
-                        runCatching { cloudSync.push(authStore) }
+        val activeSession = session
+        if (activeSession == null) {
+            onDispose { }
+        } else {
+            val preferences = context.getSharedPreferences(CHAT_PREFERENCES, Context.MODE_PRIVATE)
+            val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                if (key == "sessions" || key == "projects") {
+                    pushJob?.cancel()
+                    pushJob = scope.launch {
+                        delay(CLOUD_PUSH_DEBOUNCE_MS)
+                        withContext(Dispatchers.IO) {
+                            runCatching { cloudSync.push(authStore) }
+                        }
                     }
                 }
             }
-        }
-        preferences.registerOnSharedPreferenceChangeListener(listener)
-        onDispose {
-            pushJob?.cancel()
-            preferences.unregisterOnSharedPreferenceChangeListener(listener)
+            preferences.registerOnSharedPreferenceChangeListener(listener)
+            onDispose {
+                pushJob?.cancel()
+                preferences.unregisterOnSharedPreferenceChangeListener(listener)
+            }
         }
     }
 
@@ -225,8 +239,10 @@ fun NexoraAuthenticatedRoot() {
                             loading = true
                             scope.launch {
                                 withContext(Dispatchers.IO) {
+                                    runCatching { cloudSync.push(authStore) }
                                     runCatching { AuthApi.logout(authStore) }
                                 }
+                                clearLocalChats()
                                 session = null
                                 loading = false
                             }
@@ -359,5 +375,6 @@ private fun AccountSheet(
     }
 }
 
+private const val CHAT_PREFERENCES = "nexora_chat_history"
 private const val OAUTH_MAX_AGE_MS = 10 * 60 * 1_000L
 private const val CLOUD_PUSH_DEBOUNCE_MS = 1_200L
