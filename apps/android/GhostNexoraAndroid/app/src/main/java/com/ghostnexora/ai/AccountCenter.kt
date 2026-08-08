@@ -17,13 +17,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
@@ -189,7 +189,6 @@ internal fun AccountCenter(
                         if (current != null) {
                             authStore.saveSession(current.copy(user = updated))
                         }
-                        onUserUpdated(updated)
                     })
                     editingName = false
                 },
@@ -314,7 +313,7 @@ internal fun AccountCenter(
                 contentColor = Color(0xFFFFD6D9),
             ),
         ) {
-            Icon(Icons.Default.Logout, contentDescription = null)
+            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
             Spacer(Modifier.size(8.dp))
             Text("Cerrar sesión en este dispositivo", fontWeight = FontWeight.Bold)
         }
@@ -532,7 +531,7 @@ private fun ProvidersCard(
                 providers.forEach { provider ->
                     AssistChip(
                         onClick = {},
-                        label = { Text(provider.replaceFirstChar(Char::uppercase)) },
+                        label = { Text(provider.replaceFirstChar { it.uppercase() }) },
                     )
                 }
             }
