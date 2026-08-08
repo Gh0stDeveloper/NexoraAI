@@ -15,9 +15,7 @@ object AuthApi {
 
     fun socialStart(provider: String, store: AuthStore): Uri {
         val verifier = randomUrlToken(64)
-        val challenge = MessageDigest.getInstance("SHA-256")
-            .digest(verifier.toByteArray(Charsets.US_ASCII))
-            .toBase64Url()
+        val challenge = verifier.toCodeChallenge()
         val state = randomUrlToken(32)
         store.savePendingOAuth(
             PendingOAuth(
@@ -33,6 +31,49 @@ object AuthApi {
             .appendQueryParameter("state", state)
             .appendQueryParameter("code_challenge", challenge)
             .build()
+    }
+
+    fun socialLinkStart(provider: String, store: AuthStore): Uri {
+        val session = ensureFreshSession(store)
+            ?: throw AuthApiException("Debes iniciar sesión.", 401)
+        val verifier = randomUrlToken(64)
+        val challenge = verifier.toCodeChallenge()
+        val state = randomUrlToken(32)
+        store.savePendingOAuth(
+            PendingOAuth(
+                provider = provider,
+                state = state,
+                verifier = verifier,
+                linking = true,
+            ),
+        )
+        return try {
+            val response = executeJson(
+                method = "POST",
+                path = "/api/auth/mobile/account/link",
+                bearerToken = session.accessToken,
+                body = JSONObject()
+                    .put("provider", provider)
+                    .put("redirectUri", MOBILE_CALLBACK)
+                    .put("state", state)
+                    .put("codeChallenge", challenge),
+            )
+            Uri.parse(response.getString("authorizationUrl"))
+        } catch (error: Exception) {
+            store.clearPendingOAuth()
+            throw error
+        }
+    }
+
+    fun unlinkProvider(provider: String, store: AuthStore) {
+        val session = ensureFreshSession(store)
+            ?: throw AuthApiException("Debes iniciar sesión.", 401)
+        executeJson(
+            method = "DELETE",
+            path = "/api/auth/mobile/account/link",
+            bearerToken = session.accessToken,
+            body = JSONObject().put("provider", provider),
+        )
     }
 
     fun exchangeOAuth(code: String, verifier: String): NexoraAuthSession {
@@ -83,6 +124,19 @@ object AuthApi {
                 .put("email", email)
                 .put("code", code)
                 .put("password", password),
+        )
+    }
+
+    fun changePassword(store: AuthStore, currentPassword: String, newPassword: String) {
+        val session = ensureFreshSession(store)
+            ?: throw AuthApiException("Debes iniciar sesión.", 401)
+        executeJson(
+            method = "PUT",
+            path = "/api/auth/mobile/account/password",
+            bearerToken = session.accessToken,
+            body = JSONObject()
+                .put("currentPassword", currentPassword)
+                .put("newPassword", newPassword),
         )
     }
 
@@ -326,6 +380,10 @@ object AuthApi {
             connection?.disconnect()
         }
     }
+
+    private fun String.toCodeChallenge(): String = MessageDigest.getInstance("SHA-256")
+        .digest(toByteArray(Charsets.US_ASCII))
+        .toBase64Url()
 
     private fun randomUrlToken(bytes: Int): String {
         val buffer = ByteArray(bytes)
