@@ -1,6 +1,8 @@
+import packageJson from "../../package.json";
+
 export const env = {
   appName: process.env.APP_NAME ?? "Nexora AI",
-  appVersion: process.env.APP_VERSION ?? "dev",
+  appVersion: process.env.APP_VERSION_OVERRIDE?.trim() || packageJson.version,
   appEnv: process.env.APP_ENV ?? "local",
   aiProvider: process.env.AI_PROVIDER ?? "ollama",
   model: process.env.OLLAMA_MODEL ?? "qwen2.5-coder:7b",
