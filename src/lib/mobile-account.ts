@@ -41,6 +41,11 @@ type AccountSessionRow = {
   current: boolean;
 };
 
+type PasswordCredentialRow = {
+  password_salt: string;
+  password_hash: string;
+};
+
 export type MobileAccountOverview = {
   user: MobileAuthUser & { emailVerified: boolean };
   providers: MobileAuthProvider[];
@@ -71,17 +76,30 @@ function currentAccessHash(request: NextRequest): string {
   return token ? createHash("sha256").update(token).digest("hex") : "";
 }
 
-function codePepper(): string {
-  const configured = process.env.AUTH_CODE_PEPPER?.trim();
-  if (configured && configured.length >= 32) return configured;
-  if (process.env.NODE_ENV === "production" || process.env.APP_ENV === "production") {
+function derivedRuntimeSecret(label: string): string {
+  const databaseSecret = process.env.POSTGRES_PASSWORD?.trim();
+  if (!databaseSecret || databaseSecret === "CHANGE_THIS_PASSWORD") {
     throw new MobileAuthError(
-      "AUTH_CODE_PEPPER debe configurarse con al menos 32 caracteres.",
+      "La configuración de seguridad de la VPS no está completa.",
       503,
       "email_auth_not_configured",
     );
   }
-  return "nexora-development-account-code-pepper";
+  return createHash("sha256")
+    .update(`${label}:${databaseSecret}`)
+    .digest("hex");
+}
+
+function codePepper(): string {
+  const configured = process.env.AUTH_CODE_PEPPER?.trim();
+  if (configured && configured.length >= 32) return configured;
+  return derivedRuntimeSecret("nexora-account-code");
+}
+
+function mailWebhookSecret(): string {
+  const configured = process.env.AUTH_EMAIL_WEBHOOK_SECRET?.trim();
+  if (configured && configured.length >= 32) return configured;
+  return derivedRuntimeSecret("nexora-mail");
 }
 
 function hashCode(userId: string, purpose: AccountCodePurpose, code: string): string {
@@ -121,7 +139,7 @@ async function deliverAuthEmail(input: {
   code: string;
 }): Promise<void> {
   const endpoint = process.env.AUTH_EMAIL_WEBHOOK_URL?.trim();
-  const secret = process.env.AUTH_EMAIL_WEBHOOK_SECRET?.trim();
+  const secret = mailWebhookSecret();
   if (!endpoint) {
     throw new MobileAuthError(
       "El envío de correo todavía no está configurado en la VPS.",
@@ -141,9 +159,13 @@ async function deliverAuthEmail(input: {
     );
   }
   const loopback = url.hostname === "127.0.0.1" || url.hostname === "localhost";
-  if (url.protocol !== "https:" && !loopback) {
+  const internalMailer =
+    url.protocol === "http:" &&
+    url.hostname === "mailer" &&
+    (url.port === "8025" || url.port === "");
+  if (url.protocol !== "https:" && !loopback && !internalMailer) {
     throw new MobileAuthError(
-      "El webhook de correo debe usar HTTPS o loopback local.",
+      "El webhook de correo debe usar HTTPS o la red privada de Nexora Mail.",
       503,
       "email_delivery_not_configured",
     );
@@ -161,7 +183,7 @@ async function deliverAuthEmail(input: {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
+      Authorization: `Bearer ${secret}`,
     },
     body: JSON.stringify({
       type: verifying ? "nexora.auth.verify_email" : "nexora.auth.reset_password",
@@ -469,6 +491,68 @@ export async function confirmPasswordReset(input: {
         set revoked_at = now(), last_used_at = now()
       where user_id = $1 and revoked_at is null`,
     [user.id],
+  );
+}
+
+export async function changeAccountPassword(
+  request: NextRequest,
+  input: { currentPassword: string; newPassword: string },
+): Promise<void> {
+  const user = await authenticateMobileRequest(request);
+  if (input.newPassword.length < 8 || input.newPassword.length > 128) {
+    throw new MobileAuthError(
+      "La nueva contraseña debe tener entre 8 y 128 caracteres.",
+      400,
+      "invalid_password",
+    );
+  }
+
+  const account = await databaseQuery<{
+    email_verified_at: Date | string | null;
+  }>(`select email_verified_at from app_users where id = $1 limit 1`, [user.id]);
+  const credentials = await databaseQuery<PasswordCredentialRow>(
+    `select password_salt, password_hash
+       from app_password_credentials
+      where user_id = $1
+      limit 1`,
+    [user.id],
+  );
+  const current = credentials.rows[0];
+
+  if (current) {
+    const actual = await derivePassword(input.currentPassword, current.password_salt);
+    const expected = Buffer.from(current.password_hash, "base64");
+    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+      throw new MobileAuthError("La contraseña actual no es correcta.", 401, "invalid_credentials");
+    }
+  } else if (!account.rows[0]?.email_verified_at) {
+    throw new MobileAuthError(
+      "Verifica tu correo antes de añadir una contraseña a una cuenta social.",
+      403,
+      "email_verification_required",
+    );
+  }
+
+  const salt = randomBytes(24).toString("base64url");
+  const derived = (await derivePassword(input.newPassword, salt)).toString("base64");
+  await databaseQuery(
+    `insert into app_password_credentials (user_id, password_salt, password_hash)
+     values ($1, $2, $3)
+     on conflict (user_id)
+     do update set password_salt = excluded.password_salt,
+                   password_hash = excluded.password_hash,
+                   updated_at = now()`,
+    [user.id, salt, derived],
+  );
+
+  const currentHash = currentAccessHash(request);
+  await databaseQuery(
+    `update app_auth_sessions
+        set revoked_at = now(), last_used_at = now()
+      where user_id = $1
+        and revoked_at is null
+        and access_token_hash <> $2`,
+    [user.id, currentHash || ""],
   );
 }
 
