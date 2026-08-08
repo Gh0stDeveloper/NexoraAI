@@ -37,6 +37,7 @@ data class PendingOAuth(
     val provider: String,
     val state: String,
     val verifier: String,
+    val linking: Boolean = false,
     val startedAt: Long = System.currentTimeMillis(),
 )
 
@@ -82,12 +83,14 @@ internal fun PendingOAuth.toJson(): JSONObject = JSONObject()
     .put("provider", provider)
     .put("state", state)
     .put("verifier", verifier)
+    .put("linking", linking)
     .put("startedAt", startedAt)
 
 internal fun JSONObject.toPendingOAuth(): PendingOAuth = PendingOAuth(
     provider = getString("provider"),
     state = getString("state"),
     verifier = getString("verifier"),
+    linking = optBoolean("linking", false),
     startedAt = optLong("startedAt", System.currentTimeMillis()),
 )
 
