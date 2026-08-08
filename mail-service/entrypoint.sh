@@ -30,8 +30,8 @@ fi
 
 export MAIL_DOMAIN MAIL_FROM MAIL_DKIM_SELECTOR MAIL_HOSTNAME
 mkdir -p "$KEY_DIR" /run/opendkim /etc/opendkim
-chmod 700 "$KEY_DIR"
-chown opendkim:opendkim /run/opendkim
+chown opendkim:opendkim "$KEY_DIR" /run/opendkim
+chmod 700 "$KEY_DIR" /run/opendkim
 
 private_key="$KEY_DIR/${MAIL_DKIM_SELECTOR}.private"
 public_record="$KEY_DIR/${MAIL_DKIM_SELECTOR}.txt"
@@ -43,7 +43,7 @@ if [[ ! -s "$private_key" || ! -s "$public_record" ]]; then
     --directory="$KEY_DIR" \
     --selector="$MAIL_DKIM_SELECTOR"
 fi
-chown opendkim:opendkim "$private_key"
+chown opendkim:opendkim "$private_key" "$public_record"
 chmod 600 "$private_key"
 chmod 644 "$public_record"
 
