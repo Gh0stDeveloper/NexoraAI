@@ -149,7 +149,15 @@ fun NexoraAuthenticatedRoot() {
 
         loading = true
         val result = withContext(Dispatchers.IO) {
-            runCatching { AuthApi.exchangeOAuth(code, pending.verifier) }
+            runCatching {
+                val next = AuthApi.exchangeOAuth(code, pending.verifier)
+                if (pending.linking) {
+                    // El intercambio genera una sesión nueva para la misma cuenta. Revocamos
+                    // la anterior antes de reemplazarla para no duplicar este dispositivo.
+                    runCatching { AuthApi.logout(authStore) }
+                }
+                next
+            }
         }
         authStore.clearPendingOAuth()
         result.onSuccess { next ->
