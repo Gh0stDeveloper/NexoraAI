@@ -1,37 +1,55 @@
 # Autenticación Android, cuentas y sincronización
 
-Nexora AI 0.8.0 usa identidad de usuario autohospedada sobre la API y PostgreSQL de la VPS. La aplicación Android permite iniciar sesión con Google, Facebook, Discord o correo electrónico; sincroniza chats/proyectos y añade un Centro de cuenta para perfil, verificación de correo y administración de sesiones.
+Nexora AI 0.9.0 usa identidad de usuario autohospedada sobre la API y PostgreSQL de la VPS. Android permite iniciar sesión con Google, Facebook, Discord o correo electrónico; sincroniza chats/proyectos y ofrece un Centro de cuenta para perfil, correo, métodos de acceso y sesiones.
 
-## Arquitectura
+## Arquitectura de seguridad
 
-- Android abre los proveedores sociales en el navegador del sistema.
-- El flujo móvil utiliza OAuth 2.0 con `state` y PKCE (`S256`).
-- Google, Facebook y Discord se usan únicamente como proveedores de identidad.
-- Los `client_secret` viven exclusivamente en la VPS.
-- La API crea sesiones propias de Nexora AI.
-- El access token dura 1 hora.
-- El refresh token dura 30 días y se rota al renovarse.
-- En PostgreSQL solo se guardan hashes SHA-256 de los tokens de sesión.
-- Las contraseñas se derivan mediante `scrypt` con salt aleatorio.
-- Los códigos de verificación/recuperación tienen 6 dígitos, duran 10 minutos y permiten como máximo 5 intentos.
-- PostgreSQL guarda únicamente un HMAC SHA-256 del código OTP; el código en claro solo existe mientras se entrega al servicio de correo.
-- En Android, la sesión y el estado OAuth temporal se cifran con AES-GCM usando una clave del Android Keystore.
-- El historial mantiene copia local/offline y se sincroniza con `mobile_user_chat_state` cuando existe una sesión válida.
-- Cada sesión registra un nombre de dispositivo enviado por Android mediante `X-Nexora-Device` y puede revocarse desde el Centro de cuenta.
+- Android abre Google, Facebook y Discord en el navegador del sistema.
+- OAuth móvil utiliza `state` + PKCE S256.
+- Los `client_secret` permanecen únicamente en la VPS.
+- La API emite sesiones propias de Nexora AI.
+- Access token: 1 hora.
+- Refresh token: 30 días, rotado al renovarse.
+- PostgreSQL persiste hashes SHA-256 de tokens, no los tokens originales.
+- Contraseñas: `scrypt` + salt aleatorio.
+- OTP de verificación/recuperación: 6 dígitos, 10 minutos, máximo 5 intentos y solo HMAC SHA-256 persistido.
+- Android cifra sesión y estado OAuth temporal mediante AES-GCM + Android Keystore.
+- El historial local/offline se sincroniza con `mobile_user_chat_state`.
+- Cada sesión registra `X-Nexora-Device` y puede revocarse remotamente.
 
-## Deep link de Android
+## Nexora Mail
 
-La aplicación recibe el resultado OAuth mediante:
+Desde 0.9 el correo transaccional ya no depende de un webhook externo. El Docker Compose incluye **Nexora Mail**, formado por un gateway HTTP privado, Postfix y OpenDKIM.
+
+La API utiliza internamente:
+
+```text
+http://mailer:8025/send
+```
+
+Esa dirección no se publica en la VPS. Consulta `docs/NEXORA-MAIL.md` para configuración, DKIM, SPF, DMARC, PTR/rDNS y pruebas de entrega.
+
+Una instalación anterior puede actualizar con:
+
+```bash
+sudo nexora update
+```
+
+sin reemplazar `.env.production`. Si `AUTH_CODE_PEPPER` o `AUTH_EMAIL_WEBHOOK_SECRET` todavía no existen, la transición inicial usa secretos derivados de forma separada del secreto PostgreSQL existente. Se recomienda sustituirlos posteriormente por secretos dedicados.
+
+## Deep link Android
+
+Todos los retornos OAuth utilizan:
 
 ```text
 nexoraai://auth/callback
 ```
 
-El `AndroidManifest.xml` registra el deep link como `BROWSABLE` y la actividad usa `singleTop`, de modo que volver del navegador no crea una segunda sesión visual ni descarta el chat actual.
+`singleTop` evita crear una segunda instancia visual al volver del navegador.
 
-## Variables de entorno
+## Proveedores OAuth
 
-Añade los valores reales en `.env.production` de la VPS:
+Variables en `.env.production`:
 
 ```dotenv
 GOOGLE_CLIENT_ID=
@@ -40,192 +58,145 @@ FACEBOOK_CLIENT_ID=
 FACEBOOK_CLIENT_SECRET=
 DISCORD_CLIENT_ID=
 DISCORD_CLIENT_SECRET=
-
-AUTH_CODE_PEPPER=
-AUTH_EMAIL_WEBHOOK_URL=
-AUTH_EMAIL_WEBHOOK_SECRET=
 ```
 
-Genera `AUTH_CODE_PEPPER` con un secreto independiente, por ejemplo:
-
-```bash
-openssl rand -hex 32
-```
-
-No reutilices la contraseña de PostgreSQL, los secretos OAuth, el token del sandbox ni claves de firma Android.
-
-Nunca publiques estos secretos en GitHub ni los incluyas en `build.gradle.kts`, recursos Android o `BuildConfig`.
-
-## Google
-
-Crea/configura una aplicación OAuth para la API pública y registra:
+Redirect URIs:
 
 ```text
 https://apighostnexoraai.duckdns.org/api/auth/mobile/callback/google
-```
-
-Nexora solicita `openid email profile` y usa el endpoint OIDC de Google para obtener la identidad.
-
-## Facebook
-
-Configura Facebook Login en la aplicación de Meta y registra:
-
-```text
 https://apighostnexoraai.duckdns.org/api/auth/mobile/callback/facebook
-```
-
-Nexora solicita `email public_profile`.
-
-## Discord
-
-Crea una aplicación en Discord Developer Portal, habilita OAuth2 y registra:
-
-```text
 https://apighostnexoraai.duckdns.org/api/auth/mobile/callback/discord
 ```
 
-Nexora solicita `identify email`.
+Los mismos callbacks sirven para login normal y vinculación explícita porque el servidor mantiene estados OAuth separados para cada operación.
+
+## Vinculación y desvinculación explícita
+
+El Centro de cuenta permite vincular o quitar Google, Facebook y Discord.
+
+La vinculación **no** se basa en coincidencia de correo. El flujo exige:
+
+1. sesión Nexora válida;
+2. nuevo `state` específico de vinculación;
+3. PKCE S256;
+4. autenticación completa con el proveedor;
+5. autorización SQL efímera de 60 segundos;
+6. escritura del proveedor únicamente dentro de esa autorización.
+
+El trigger `nexora_prevent_implicit_auth_link()` sigue bloqueando cualquier asociación silenciosa.
+
+Si el proveedor ya pertenece a otra cuenta Nexora que contiene contraseña, varios proveedores o historial remoto propio, el servidor responde con conflicto y **no fusiona automáticamente las cuentas**. Esto evita perder chats, sesiones o credenciales.
+
+Solo se permite mover automáticamente una identidad desde una cuenta social efímera sin otros datos propios.
+
+Al desvincular, Nexora comprueba que quede al menos otro método de acceso. No es posible eliminar el único método con el que se podría recuperar la cuenta.
+
+## Foto de perfil
+
+Cuando Google, Facebook o Discord entregan una imagen HTTPS, Android la muestra mediante Coil. Si no existe imagen o la URL no es HTTPS, la interfaz usa un avatar local con la inicial del nombre.
 
 ## Correo, verificación y recuperación
 
-Nexora 0.8.0 incorpora:
+Nexora incorpora:
 
-- registro e inicio de sesión con correo/contraseña;
-- verificación de correo desde el Centro de cuenta;
-- recuperación de contraseña desde `Olvidé mi contraseña`;
-- OTP de un solo uso con caducidad y límite de intentos;
-- respuesta indistinguible al solicitar recuperación para evitar enumeración de cuentas;
-- revocación de todas las sesiones activas después de cambiar la contraseña.
+- registro/inicio de sesión con correo y contraseña;
+- verificación de correo mediante Nexora Mail;
+- `Olvidé mi contraseña`;
+- OTP de un solo uso;
+- respuesta indistinguible durante la solicitud de reset para evitar enumeración de cuentas;
+- revocación de sesiones después de un reset.
 
-La verificación de correo no es obligatoria para leer chats existentes, pero queda disponible como señal de seguridad y debe utilizarse antes de habilitar operaciones sensibles adicionales en futuras versiones.
+## Cambiar o añadir contraseña desde una sesión
 
-## Webhook de correo
+El Centro de cuenta permite:
 
-Nexora no incorpora credenciales SMTP ni secretos de un proveedor de email dentro del APK. La API entrega el mensaje a un webhook que puedes alojar en la misma VPS o en otro servicio controlado por ti.
+- **Cuenta con contraseña:** cambiarla demostrando primero la contraseña actual.
+- **Cuenta social sin contraseña:** añadir una contraseña si el correo ya está verificado.
 
-Configura:
-
-```dotenv
-AUTH_EMAIL_WEBHOOK_URL=https://correo.example.com/nexora/send
-AUTH_EMAIL_WEBHOOK_SECRET=UN_SECRETO_LARGO_E_INDEPENDIENTE
-```
-
-En producción se exige HTTPS para destinos remotos. Para un servicio local en la VPS también son válidos:
-
-```text
-http://127.0.0.1:PUERTO/...
-http://localhost:PUERTO/...
-```
-
-Cuando existe `AUTH_EMAIL_WEBHOOK_SECRET`, Nexora envía:
-
-```http
-Authorization: Bearer <AUTH_EMAIL_WEBHOOK_SECRET>
-Content-Type: application/json
-```
-
-El cuerpo tiene esta forma conceptual:
-
-```json
-{
-  "type": "nexora.auth.verify_email",
-  "to": "usuario@example.com",
-  "name": "Usuario",
-  "subject": "Verifica tu correo en Nexora AI",
-  "text": "...",
-  "html": "...",
-  "code": "123456",
-  "expiresInMinutes": 10
-}
-```
-
-Para recuperación, `type` cambia a:
-
-```text
-nexora.auth.reset_password
-```
-
-El receptor del webhook debe:
-
-1. validar el Bearer secret;
-2. aceptar solo solicitudes desde la infraestructura esperada;
-3. aplicar límites anti-abuso propios;
-4. enviar el email sin registrar el OTP en logs permanentes;
-5. devolver HTTP `2xx` únicamente cuando haya aceptado el mensaje.
+Al cambiar o añadir contraseña se mantienen la sesión actual y se revocan las demás sesiones activas, reduciendo el riesgo de que un dispositivo antiguo conserve acceso.
 
 ## Centro de cuenta Android
 
-El avatar flotante abre el Centro de cuenta. Desde ahí el usuario puede:
+Desde el avatar flotante el usuario puede:
 
-- ver nombre y correo;
-- editar su nombre visible;
-- verificar el correo mediante OTP;
-- ver métodos de acceso conectados;
-- consultar dispositivos/sesiones activas;
-- cerrar una sesión remota individual;
+- ver avatar, nombre y correo;
+- editar el nombre;
+- verificar correo;
+- vincular Google/Facebook/Discord;
+- desvincular un proveedor cuando no sea el único acceso;
+- crear o cambiar contraseña;
+- ver dispositivos/sesiones activas;
+- cerrar una sesión remota;
 - cerrar todas las demás sesiones;
 - cerrar la sesión actual.
-
-La vinculación de distintos proveedores sigue siendo explícita por diseño. El backend contiene una barrera SQL que impide asociar silenciosamente una identidad social con otra cuenta solo por compartir un correo.
 
 ## Endpoints
 
 | Método | Ruta | Función |
 |---|---|---|
-| GET | `/api/auth/mobile/start` | Inicia OAuth social y guarda `state` + PKCE. |
-| GET | `/api/auth/mobile/callback/[provider]` | Recibe el callback y entrega un código efímero al APK. |
-| POST | `/api/auth/mobile/exchange` | Canjea código efímero + verifier PKCE por sesión Nexora. |
-| POST | `/api/auth/mobile/email` | Registro/inicio de sesión por correo. |
-| POST | `/api/auth/mobile/refresh` | Rota access y refresh tokens. |
-| GET | `/api/auth/mobile/me` | Devuelve el usuario actual. |
-| POST | `/api/auth/mobile/logout` | Revoca la sesión actual. |
-| GET | `/api/auth/mobile/account` | Devuelve perfil, proveedores y sesiones activas. |
-| PATCH | `/api/auth/mobile/account` | Actualiza el nombre del perfil. |
+| GET | `/api/auth/mobile/start` | Inicia login OAuth normal. |
+| GET | `/api/auth/mobile/callback/[provider]` | Completa login o vinculación según el estado efímero. |
+| POST | `/api/auth/mobile/exchange` | Canjea código efímero + PKCE por sesión Nexora. |
+| POST | `/api/auth/mobile/email` | Registro/login por correo. |
+| POST | `/api/auth/mobile/refresh` | Rota access/refresh tokens. |
+| GET | `/api/auth/mobile/me` | Devuelve usuario actual. |
+| POST | `/api/auth/mobile/logout` | Revoca sesión actual. |
+| GET | `/api/auth/mobile/account` | Perfil, proveedores y sesiones. |
+| PATCH | `/api/auth/mobile/account` | Actualiza nombre. |
 | POST | `/api/auth/mobile/account/verify` | Solicita/confirma verificación de correo. |
-| DELETE | `/api/auth/mobile/account/sessions` | Revoca una sesión o todas las demás. |
-| POST | `/api/auth/mobile/password/reset` | Solicita/confirma recuperación de contraseña. |
+| DELETE | `/api/auth/mobile/account/sessions` | Revoca una sesión o las demás. |
+| POST | `/api/auth/mobile/account/link` | Inicia vinculación OAuth explícita. |
+| DELETE | `/api/auth/mobile/account/link` | Desvincula un proveedor. |
+| PUT | `/api/auth/mobile/account/password` | Añade/cambia contraseña autenticada. |
+| POST | `/api/auth/mobile/password/reset` | Solicita/confirma recuperación. |
 | GET | `/api/mobile/user/state` | Descarga historial/proyectos. |
 | PUT | `/api/mobile/user/state` | Guarda historial/proyectos. |
 
-## Sincronización y aislamiento de cuentas
+## Sincronización y aislamiento
 
-Al iniciar sesión, Android combina la copia local con la remota por identificador y `updatedAt`. Los mensajes de una misma conversación se fusionan también por identificador.
+Al iniciar sesión Android combina la copia local con la remota por ID y `updatedAt`.
 
 Al cerrar sesión:
 
-1. se intenta realizar un último `push` de chats y proyectos;
-2. la sesión se revoca en la API;
-3. se elimina la copia local del historial;
-4. la copia remota permanece asociada a la cuenta.
+1. intenta un último `push`;
+2. revoca la sesión;
+3. elimina la copia local;
+4. conserva la copia remota asociada a la cuenta.
 
-Esto impide que una segunda cuenta que use el mismo teléfono herede conversaciones de la anterior.
+Una segunda cuenta en el mismo teléfono no hereda las conversaciones del usuario anterior.
 
-Al restablecer una contraseña se revocan todas las sesiones activas de esa cuenta. El usuario debe volver a autenticarse en cada dispositivo.
+Las ramas y variantes creadas al editar/regenerar mensajes también forman parte del estado sincronizado porque se almacenan como sesiones normales con `parentSessionId`, `branchedFromMessageId`, `variantGroupId` y `variantIndex`.
 
-## Despliegue
+## Despliegue desde la versión instalada
 
-Después de configurar proveedores y correo:
+Cuando 0.9 llegue a `main`:
 
 ```bash
-cd /opt/nexora-ai
+cd /opt/NexoraAI
 sudo nexora update
 ```
 
-La inicialización de la API aplica las ampliaciones del esquema mediante `ensureDatabase()`. Las migraciones 0.8.0 son aditivas y no eliminan usuarios, sesiones históricas ni chats existentes.
+No es necesario reinstalar. Las migraciones PostgreSQL son aditivas, Nexora Mail se construye dentro del mismo flujo, su healthcheck se valida antes de considerar correcta la actualización y cualquier fallo activa el rollback existente.
 
-## Lista de comprobación
+Después:
 
-Comprueba en producción:
+```bash
+sudo nexora verify
+sudo nexora mail-dns
+sudo nexora mail-test usuario@example.com
+```
 
-1. registro por correo;
-2. cierre y reapertura manteniendo la sesión;
-3. Google → navegador → retorno a Nexora AI;
-4. Facebook → navegador → retorno a Nexora AI;
-5. Discord → navegador → retorno a Nexora AI;
-6. envío y confirmación del código de verificación;
-7. recuperación de contraseña desde la pantalla de login;
-8. comprobar que el reset invalida sesiones previas;
-9. abrir dos dispositivos y cerrar remotamente uno desde el Centro de cuenta;
-10. crear un chat, cerrar sesión y comprobar que desaparece localmente;
-11. volver a entrar con la misma cuenta y comprobar que el chat se restaura;
-12. entrar con una cuenta distinta y comprobar que no aparecen chats ajenos.
+## Comprobaciones recomendadas
+
+1. Login por correo y permanencia de sesión.
+2. Login Google/Facebook/Discord y retorno al mismo Activity.
+3. Vincular un proveedor nuevo desde una cuenta iniciada.
+4. Intentar vincular un proveedor perteneciente a una cuenta con datos y confirmar que se rechaza.
+5. Desvincular un proveedor manteniendo otro método de acceso.
+6. Verificar correo mediante Nexora Mail.
+7. Recuperar contraseña desde login.
+8. Cambiar contraseña desde una sesión autenticada y comprobar revocación de otros dispositivos.
+9. Ver foto social y fallback de inicial.
+10. Crear chats, cerrar sesión y comprobar aislamiento local.
+11. Volver a entrar y comprobar restauración remota.
+12. Editar/regenerar una respuesta y verificar que la conversación original sigue disponible.
