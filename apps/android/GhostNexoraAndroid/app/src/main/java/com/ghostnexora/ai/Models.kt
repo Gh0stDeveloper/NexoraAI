@@ -111,6 +111,8 @@ data class ChatMessage(
     val requestId: String? = null,
     val requestStatus: RequestStatus? = null,
     val buildArtifact: AndroidBuildArtifact? = null,
+    val variantGroupId: String? = null,
+    val variantIndex: Int? = null,
 )
 
 data class PendingChatRequest(
@@ -173,5 +175,7 @@ data class ChatSession(
     val projectId: String? = null,
     val isPinned: Boolean = false,
     val validateCode: Boolean = false,
+    val parentSessionId: String? = null,
+    val branchedFromMessageId: String? = null,
     val messages: List<ChatMessage> = emptyList(),
 )
