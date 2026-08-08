@@ -1,7 +1,8 @@
 import {
+  createHash,
   createHmac,
+  randomBytes,
   randomInt,
-  randomToken as _unused,
   randomUUID,
   scrypt,
   timingSafeEqual,
@@ -14,8 +15,6 @@ import {
   type MobileAuthProvider,
   type MobileAuthUser,
 } from "@/lib/mobile-auth";
-
-void _unused;
 
 type AccountUserRow = {
   id: string;
@@ -67,6 +66,11 @@ function bearerToken(request: NextRequest): string {
   return authorization.match(/^Bearer\s+(.+)$/i)?.[1] || "";
 }
 
+function currentAccessHash(request: NextRequest): string {
+  const token = bearerToken(request);
+  return token ? createHash("sha256").update(token).digest("hex") : "";
+}
+
 function codePepper(): string {
   const configured = process.env.AUTH_CODE_PEPPER?.trim();
   if (configured && configured.length >= 32) return configured;
@@ -80,37 +84,6 @@ function codePepper(): string {
   return "nexora-development-account-code-pepper";
 }
 
-function hashAccessToken(token: string): string {
-  return createHmac("sha256", "nexora-session-lookup")
-    .update(token)
-    .digest("hex");
-}
-
-function actualAccessTokenHash(token: string): string {
-  return createHmac("sha256", "")
-    .update(token)
-    .digest("hex");
-}
-
-async function lookupCurrentAccessHash(request: NextRequest): Promise<string> {
-  const token = bearerToken(request);
-  if (!token) return "";
-  const result = await databaseQuery<{ access_token_hash: string }>(
-    `select access_token_hash
-       from app_auth_sessions
-      where access_token_hash = encode(digest($1, 'sha256'), 'hex')
-        and revoked_at is null
-      limit 1`,
-    [token],
-  ).catch(() => ({ rows: [] }) as { rows: Array<{ access_token_hash: string }> });
-  if (result.rows[0]?.access_token_hash) return result.rows[0].access_token_hash;
-
-  // pgcrypto is not required by Nexora. Fall back to the Node-side SHA-256
-  // representation used by mobile-auth.ts when the SQL digest function is absent.
-  const { createHash } = await import("node:crypto");
-  return createHash("sha256").update(token).digest("hex");
-}
-
 function hashCode(userId: string, purpose: AccountCodePurpose, code: string): string {
   return createHmac("sha256", codePepper())
     .update(`${userId}:${purpose}:${code}`)
@@ -121,7 +94,7 @@ function makeCode(): string {
   return randomInt(0, 1_000_000).toString().padStart(6, "0");
 }
 
-function passwordHash(password: string, salt: string): Promise<Buffer> {
+function derivePassword(password: string, salt: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     scrypt(
       password,
@@ -300,7 +273,7 @@ async function consumeCode(input: {
 
 export async function getAccountOverview(request: NextRequest): Promise<MobileAccountOverview> {
   const authenticated = await authenticateMobileRequest(request);
-  const currentHash = await lookupCurrentAccessHash(request);
+  const currentHash = currentAccessHash(request);
   const deviceName = safeDeviceName(request.headers.get("x-nexora-device"));
 
   if (currentHash) {
@@ -481,9 +454,8 @@ export async function confirmPasswordReset(input: {
   }
   await consumeCode({ userId: user.id, purpose: "reset_password", code: input.code });
 
-  const { randomBytes } = await import("node:crypto");
   const salt = randomBytes(24).toString("base64url");
-  const derived = (await passwordHash(input.password, salt)).toString("base64");
+  const derived = (await derivePassword(input.password, salt)).toString("base64");
   await databaseQuery(
     `update app_password_credentials
         set password_salt = $2,
@@ -515,7 +487,7 @@ export async function revokeAccountSession(
 
 export async function revokeOtherAccountSessions(request: NextRequest): Promise<void> {
   const user = await authenticateMobileRequest(request);
-  const currentHash = await lookupCurrentAccessHash(request);
+  const currentHash = currentAccessHash(request);
   await databaseQuery(
     `update app_auth_sessions
         set revoked_at = now(), last_used_at = now()
