@@ -2,6 +2,10 @@ services:
   app:
     build: .
     env_file: .env.production
+    environment:
+      AUTH_EMAIL_WEBHOOK_URL: http://mailer:8025/send
+      AUTH_EMAIL_WEBHOOK_SECRET: ${AUTH_EMAIL_WEBHOOK_SECRET:-${POSTGRES_PASSWORD}}
+      AUTH_CODE_PEPPER: ${AUTH_CODE_PEPPER:-${POSTGRES_PASSWORD}}
     restart: unless-stopped
     stop_grace_period: 30s
     ports: ["127.0.0.1:3000:3000"]
@@ -25,6 +29,8 @@ services:
     build:
       context: ./mail-service
     env_file: .env.production
+    environment:
+      AUTH_EMAIL_WEBHOOK_SECRET: ${AUTH_EMAIL_WEBHOOK_SECRET:-${POSTGRES_PASSWORD}}
     restart: unless-stopped
     expose: ["8025"]
     volumes:
