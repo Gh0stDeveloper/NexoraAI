@@ -1,4 +1,5 @@
 import { type NextRequest } from "next/server";
+import { completeAccountLinkCallback } from "@/lib/mobile-link";
 import {
   completeOAuthCallback,
   isMobileProvider,
@@ -32,12 +33,13 @@ export async function GET(
     );
   }
 
+  const state = request.nextUrl.searchParams.get("state") || "";
+  const code = request.nextUrl.searchParams.get("code") || "";
   try {
-    const redirect = await completeOAuthCallback({
-      provider,
-      state: request.nextUrl.searchParams.get("state") || "",
-      code: request.nextUrl.searchParams.get("code") || "",
-    });
+    const linkedRedirect = await completeAccountLinkCallback({ provider, state, code });
+    if (linkedRedirect) return Response.redirect(linkedRedirect, 302);
+
+    const redirect = await completeOAuthCallback({ provider, state, code });
     return Response.redirect(redirect, 302);
   } catch (error) {
     if (error instanceof MobileAuthError) {
