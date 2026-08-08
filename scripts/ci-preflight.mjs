@@ -21,6 +21,20 @@ const requiredFiles = [
   "src/app/terms/page.tsx",
   "src/app/privacy/page.tsx",
   "src/app/download/route.ts",
+  "src/app/api/auth/mobile/start/route.ts",
+  "src/app/api/auth/mobile/callback/[provider]/route.ts",
+  "src/app/api/auth/mobile/exchange/route.ts",
+  "src/app/api/auth/mobile/email/route.ts",
+  "src/app/api/auth/mobile/refresh/route.ts",
+  "src/app/api/auth/mobile/me/route.ts",
+  "src/app/api/auth/mobile/logout/route.ts",
+  "src/app/api/auth/mobile/account/route.ts",
+  "src/app/api/auth/mobile/account/verify/route.ts",
+  "src/app/api/auth/mobile/account/sessions/route.ts",
+  "src/app/api/auth/mobile/account/link/route.ts",
+  "src/app/api/auth/mobile/account/password/route.ts",
+  "src/app/api/auth/mobile/password/reset/route.ts",
+  "src/app/api/mobile/user/state/route.ts",
   "src/app/api/mobile/chat/route.ts",
   "src/app/api/mobile/chat/stream/route.ts",
   "src/app/api/mobile/chat/jobs/route.ts",
@@ -34,8 +48,12 @@ const requiredFiles = [
   "src/lib/android-release.ts",
   "src/lib/chat-jobs.ts",
   "src/lib/db.ts",
+  "src/lib/mobile-auth.ts",
+  "src/lib/mobile-account.ts",
+  "src/lib/mobile-link.ts",
   "src/lib/mobile-chat.ts",
   "scripts/mobile-chat-contract.test.mjs",
+  "scripts/mobile-account-contract.test.mjs",
   "scripts/durable-jobs-contract.test.mjs",
   "scripts/durable-jobs-db.integration.mjs",
   "scripts/vps-healthcheck.test.sh",
@@ -44,6 +62,9 @@ const requiredFiles = [
   "src/lib/sandbox.ts",
   "sandbox/Dockerfile",
   "sandbox/server.mjs",
+  "mail-service/Dockerfile",
+  "mail-service/gateway.py",
+  "mail-service/entrypoint.sh",
   "build-worker/Dockerfile",
   "build-worker/worker.mjs",
   "build-worker/template/app/build.gradle.kts",
@@ -54,7 +75,16 @@ const requiredFiles = [
   `${androidBase}/app/src/main/cpp/CMakeLists.txt`,
   nativeCore,
   `${androidPackage}/ApiClient.kt`,
+  `${androidPackage}/AuthApi.kt`,
+  `${androidPackage}/AuthModels.kt`,
+  `${androidPackage}/AuthScreen.kt`,
+  `${androidPackage}/AuthStore.kt`,
+  `${androidPackage}/AuthenticatedRoot.kt`,
+  `${androidPackage}/AdvancedAccountCenter.kt`,
+  `${androidPackage}/UserAvatar.kt`,
+  `${androidPackage}/CloudChatSync.kt`,
   `${androidPackage}/ChatComponents.kt`,
+  `${androidPackage}/ChatBranchActions.kt`,
   `${androidPackage}/ChatStore.kt`,
   `${androidPackage}/DurableWork.kt`,
   `${androidPackage}/LegalComponents.kt`,
@@ -73,6 +103,7 @@ const requiredFiles = [
   "docs/README-INSTALL.md",
   "docs/README-UPDATE.md",
   "docs/ANDROID-BUILD-VPS.md",
+  "docs/ANDROID-AUTH.md",
   "docs/DURABLE-CHAT-AND-USER-BUILDS.md",
   "docs/SUPPORT-MATRIX.md",
   "docs/SANDBOX.md",
@@ -108,7 +139,7 @@ function excludes(file, tokens) {
 }
 
 const pkg = JSON.parse(content("package.json") || "{}");
-if (pkg.version !== "0.6.0") errors.push("package.json version must be 0.6.0");
+if (pkg.version !== "0.9.0") errors.push("package.json version must be 0.9.0");
 if (pkg.dependencies?.pg !== "^8.16.3") errors.push("pg must remain pinned to the reviewed 8.16 line");
 if (pkg.dependencies?.next !== "16.3.0") errors.push("Next.js must remain on reviewed 16.3.0");
 if (pkg.dependencies?.react !== "19.2.8") errors.push("React must remain on reviewed 19.2.8");
@@ -135,7 +166,85 @@ includes("src/app/api/mobile/chat/stream/route.ts", [
 ]);
 includes("src/app/api/mobile/chat/jobs/route.ts", ["after", "runChatJobInBackground", "status: 202"]);
 includes("src/lib/chat-jobs.ts", ["chat_jobs", "access_token_hash", "make_interval", "runAgent"]);
-includes("src/lib/db.ts", ["DATABASE_URL", "android_build_jobs", "chat_jobs"]);
+includes("src/lib/db.ts", [
+  "DATABASE_URL",
+  "app_users",
+  "email_verified_at",
+  "app_auth_sessions",
+  "app_account_codes",
+  "app_auth_link_authorizations",
+  "mobile_account_link_states",
+  "mobile_user_chat_state",
+  "nexora_prevent_implicit_auth_link",
+  "explicit_link",
+  "android_build_jobs",
+  "chat_jobs",
+]);
+includes("src/lib/mobile-auth.ts", [
+  "scrypt",
+  "code_challenge",
+  "refresh_token_hash",
+  "authenticateMobileRequest",
+  "nexoraai://auth/callback",
+]);
+includes("src/lib/mobile-account.ts", [
+  "AUTH_CODE_PEPPER",
+  "AUTH_EMAIL_WEBHOOK_URL",
+  "AUTH_EMAIL_WEBHOOK_SECRET",
+  "derivedRuntimeSecret",
+  '"nexora-mail"',
+  "createHmac",
+  "timingSafeEqual",
+  "MAX_CODE_ATTEMPTS",
+  "requestPasswordReset",
+  "confirmPasswordReset",
+  "changeAccountPassword",
+  "revokeOtherAccountSessions",
+]);
+includes("src/lib/mobile-link.ts", [
+  "createAccountLinkStart",
+  "completeAccountLinkCallback",
+  "unlinkAccountProvider",
+  "app_auth_link_authorizations",
+  "provider_account_has_data",
+  "mobile_account_link_states",
+]);
+includes("src/app/api/auth/mobile/callback/[provider]/route.ts", [
+  "completeAccountLinkCallback",
+  "completeOAuthCallback",
+]);
+includes("src/app/api/auth/mobile/account/link/route.ts", [
+  "createAccountLinkStart",
+  "unlinkAccountProvider",
+  "checkMobileRateLimit",
+]);
+includes("src/app/api/auth/mobile/account/password/route.ts", [
+  "changeAccountPassword",
+  "checkMobileRateLimit",
+]);
+includes("src/app/api/auth/mobile/account/route.ts", [
+  "getAccountOverview",
+  "updateAccountProfile",
+  "checkMobileRateLimit",
+]);
+includes("src/app/api/auth/mobile/account/verify/route.ts", [
+  "requestEmailVerification",
+  "confirmEmailVerification",
+]);
+includes("src/app/api/auth/mobile/account/sessions/route.ts", [
+  "revokeAccountSession",
+  "revokeOtherAccountSessions",
+]);
+includes("src/app/api/auth/mobile/password/reset/route.ts", [
+  "requestPasswordReset",
+  "confirmPasswordReset",
+  "enumerate",
+]);
+includes("src/app/api/mobile/user/state/route.ts", [
+  "authenticateMobileRequest",
+  "mobile_user_chat_state",
+  "MAX_STATE_BYTES",
+]);
 includes("src/lib/android-builds.ts", [
   "ENABLE_USER_ANDROID_BUILDS",
   "USER_BUILD_MAX_PER_HOUR",
@@ -181,8 +290,9 @@ includes("sandbox/server.mjs", [
 ]);
 
 includes(`${androidBase}/app/build.gradle.kts`, [
-  'versionCode = 8',
-  'versionName = "0.6.0"',
+  'versionCode = 11',
+  'versionName = "0.9.0"',
+  '"io.coil-kt:coil-compose:2.7.0"',
   '"armeabi-v7a", "arm64-v8a", "x86", "x86_64"',
   "externalNativeBuild",
   "isMinifyEnabled = true",
@@ -207,15 +317,84 @@ includes(`${androidPackage}/ApiClient.kt`, [
 excludes(`${androidPackage}/ApiClient.kt`, [
   '.put("projectId", projectId ?: JSONObject.NULL)',
 ]);
+includes(`${androidPackage}/AuthApi.kt`, [
+  "Authorization",
+  "ensureFreshSession",
+  "api/auth/mobile/exchange",
+  "getAccountOverview",
+  "requestEmailVerification",
+  "requestPasswordReset",
+  "revokeOtherSessions",
+  "socialLinkStart",
+  "unlinkProvider",
+  "changePassword",
+  "X-Nexora-Device",
+]);
+includes(`${androidPackage}/AuthStore.kt`, [
+  "AndroidKeyStore",
+  "AES/GCM/NoPadding",
+  "AuthCallbackBus",
+]);
+includes(`${androidPackage}/AuthenticatedRoot.kt`, [
+  "CloudChatSync",
+  "clearLocalChats",
+  "NexoraAuthenticatedRoot",
+  "AdvancedAccountCenter",
+  "pending.linking",
+  "NexoraUserAvatar",
+]);
+includes(`${androidPackage}/AdvancedAccountCenter.kt`, [
+  "Centro de cuenta",
+  "Nexora Mail",
+  "Vincular",
+  "AuthApi.socialLinkStart",
+  "AuthApi.unlinkProvider",
+  "AuthApi.changePassword",
+  "Cerrar todas las demás sesiones",
+]);
+includes(`${androidPackage}/UserAvatar.kt`, ["AsyncImage", "https://", "ContentScale.Crop"]);
+includes(`${androidPackage}/AuthScreen.kt`, [
+  "Olvidé mi contraseña",
+  "Código de 6 dígitos",
+  "RESET_PASSWORD",
+]);
+includes(`${androidPackage}/CloudChatSync.kt`, [
+  "mergePayload",
+  "mobile",
+  "nexora_chat_history",
+]);
+includes(`${androidPackage}/ChatComponents.kt`, [
+  "SelectionContainer",
+  'content.split("```")',
+  "ContentCopy",
+  "Intent.ACTION_SEND",
+  "Buscar chats y mensajes",
+]);
+includes(`${androidPackage}/ChatBranchActions.kt`, [
+  "Editar",
+  "Regenerar",
+  "Ramificar conversación",
+  "Versión anterior",
+  "Versión siguiente",
+]);
+includes(`${androidBase}/app/src/main/AndroidManifest.xml`, [
+  'android:scheme="nexoraai"',
+  'android:host="auth"',
+  'android:path="/callback"',
+  'android:launchMode="singleTop"',
+]);
 includes(`${androidPackage}/Models.kt`, [
   "ChatProject",
   "isPinned",
   "AgentProgress",
-  "elapsedMs",
   "CodeValidationSummary",
   "ASSISTANT",
   "AndroidBuildArtifact",
   "RequestStatus",
+  "variantGroupId",
+  "variantIndex",
+  "parentSessionId",
+  "branchedFromMessageId",
 ]);
 includes(`${androidPackage}/NexoraApp.kt`, [
   "thinkingElapsedMs",
@@ -224,8 +403,18 @@ includes(`${androidPackage}/NexoraApp.kt`, [
   "toggleSessionPin",
   "LegalDocumentDialog",
   "AssistantThinking",
+  "createBranchSession",
+  "regenerateMessage",
+  "editUserMessage",
+  "ChatBranchActions",
+  "queueAssistantResponse",
 ]);
-includes(`${androidPackage}/ChatStore.kt`, ["KEY_PROJECTS", "isPinned", "codeValidation"]);
+includes(`${androidPackage}/ChatStore.kt`, [
+  "KEY_PROJECTS",
+  "variantGroupId",
+  "parentSessionId",
+  "branchedFromMessageId",
+]);
 includes(`${androidPackage}/DurableWork.kt`, [
   "WorkManager",
   "ExistingWorkPolicy.KEEP",
@@ -266,11 +455,37 @@ includes("docker-compose.vps.yml", [
   'profiles: ["user-builds"]',
   "android-build-worker",
   "/var/lib/nexora-ai/releases:ro",
-  "cap_drop",
+  "mailer:",
+  "http://mailer:8025/send",
+  "mailer-keys:/var/lib/nexora-mail",
+  "condition: service_healthy",
+  "no-new-privileges:true",
+]);
+includes("mail-service/Dockerfile", ["postfix", "opendkim", "HEALTHCHECK", "EXPOSE 8025"]);
+includes("mail-service/gateway.py", [
+  'self.path != "/send"',
+  "hmac.compare_digest",
+  "smtplib.SMTP",
+  "nexora-mail:",
+  "MAX_BODY_BYTES",
+]);
+includes("mail-service/entrypoint.sh", [
+  "opendkim-genkey",
+  "inet_interfaces = loopback-only",
+  "smtp_tls_security_level = may",
+  "MAIL_DKIM_SELECTOR",
 ]);
 includes(".env.vps.example", [
-  "APP_VERSION=0.6.0",
+  "APP_VERSION=0.9.0",
   "ANDROID_APK_URL=",
+  "GOOGLE_CLIENT_ID=",
+  "FACEBOOK_CLIENT_ID=",
+  "DISCORD_CLIENT_ID=",
+  "MAIL_DOMAIN=",
+  "MAIL_FROM=",
+  "MAIL_DKIM_SELECTOR=nexora",
+  "AUTH_CODE_PEPPER=",
+  "AUTH_EMAIL_WEBHOOK_SECRET=",
   "ALLOW_CODE_EXECUTION=false",
   "SANDBOX_RUNNER_TOKEN=",
   "SANDBOX_MAX_CONCURRENT_JOBS=2",
@@ -303,15 +518,17 @@ includes("deploy/scripts/nexora-vps.sh", [
   "backup)",
   "android-release)",
   "flock --nonblock",
-  "no se reinició ningún contenedor",
+  "compose_has_service mailer",
+  "mail-dns)",
+  "mail-test)",
   "rollback automático",
-  "la función volvió a quedar desactivada",
-  "artefactos y enlaces eliminados",
+  "Nexora Mail está activo",
 ]);
 includes("deploy/scripts/verify-vps.sh", [
   "wait_for_command",
   "NEXORA_VERIFY_TIMEOUT_SECONDS",
-  "show_app_diagnostics",
+  "Nexora Mail",
+  "logs --no-color --tail=120 mailer",
 ]);
 includes("deploy/scripts/platform-check.sh", [
   "ubuntu:22",
@@ -350,6 +567,11 @@ includes(".github/workflows/android-ci.yml", [
   "--min-sdk-version 23",
   "assembleDebug",
   "assembleRelease",
+]);
+includes(".github/workflows/docker-vps-ci.yml", [
+  "Validate Nexora Mail gateway syntax",
+  "Build Nexora Mail image",
+  "mail-service",
 ]);
 includes(".github/workflows/platform-compatibility.yml", [
   "Ubuntu 22.04",

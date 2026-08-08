@@ -21,10 +21,10 @@ class ChatStore(context: Context) {
     }
 
     fun save(sessions: List<ChatSession>, projects: List<ChatProject>) = synchronized(writeLock) {
-        val persistedMessages = decodeArray(KEY_SESSIONS) { it.toChatSession() }
-            .flatMap { it.messages }
-            .associateBy { it.id }
+        val persistedBySession = decodeArray(KEY_SESSIONS) { it.toChatSession() }
+            .associate { session -> session.id to session.messages.associateBy { it.id } }
         val mergedSessions = sessions.map { session ->
+            val persistedMessages = persistedBySession[session.id].orEmpty()
             session.copy(
                 messages = session.messages.map { message ->
                     val persisted = persistedMessages[message.id]
@@ -154,6 +154,8 @@ class ChatStore(context: Context) {
         .put("projectId", projectId ?: JSONObject.NULL)
         .put("isPinned", isPinned)
         .put("validateCode", validateCode)
+        .put("parentSessionId", parentSessionId ?: JSONObject.NULL)
+        .put("branchedFromMessageId", branchedFromMessageId ?: JSONObject.NULL)
         .put(
             "messages",
             JSONArray().apply {
@@ -183,6 +185,8 @@ class ChatStore(context: Context) {
         .put("requestId", requestId ?: JSONObject.NULL)
         .put("requestStatus", requestStatus?.wireValue ?: JSONObject.NULL)
         .put("buildArtifact", buildArtifact?.toJson() ?: JSONObject.NULL)
+        .put("variantGroupId", variantGroupId ?: JSONObject.NULL)
+        .put("variantIndex", variantIndex ?: JSONObject.NULL)
 
     private fun AgentProgress.toJson(): JSONObject = JSONObject()
         .put("stage", stage)
@@ -233,6 +237,8 @@ class ChatStore(context: Context) {
             projectId = nullableString("projectId"),
             isPinned = optBoolean("isPinned", false),
             validateCode = optBoolean("validateCode", false),
+            parentSessionId = nullableString("parentSessionId"),
+            branchedFromMessageId = nullableString("branchedFromMessageId"),
             messages = messages,
         )
     }
@@ -272,6 +278,8 @@ class ChatStore(context: Context) {
                 RequestStatus.entries.firstOrNull { it.wireValue == status }
             },
             buildArtifact = optJSONObject("buildArtifact")?.toBuildArtifact(),
+            variantGroupId = nullableString("variantGroupId"),
+            variantIndex = nullableInt("variantIndex"),
         )
     }
 

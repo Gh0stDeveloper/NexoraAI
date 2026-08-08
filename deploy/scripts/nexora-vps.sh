@@ -40,6 +40,21 @@ compose() {
   "${command[@]}" "$@"
 }
 
+compose_has_service() {
+  compose config --services 2>/dev/null | grep -Fxq "$1"
+}
+
+read_env_value() {
+  local key="$1"
+  awk -F= -v target="$key" '
+    $1 == target { value = substr($0, index($0, "=") + 1) }
+    END {
+      gsub(/^"|"$/, "", value)
+      print value
+    }
+  ' "$ENV_FILE"
+}
+
 acquire_operation_lock() {
   if ! command -v flock >/dev/null 2>&1; then
     printf 'ERROR: falta flock. Ejecuta bootstrap-vps.sh para instalar util-linux.\n' >&2
@@ -161,12 +176,7 @@ disable_user_builds() {
     exit 3
   fi
   local jobs_path
-  jobs_path="$(awk -F= '
-    $1 == "USER_BUILD_JOBS_PATH" { value = substr($0, index($0, "=") + 1) }
-    END { print value }
-  ' "$ENV_FILE")"
-  jobs_path="${jobs_path%\"}"
-  jobs_path="${jobs_path#\"}"
+  jobs_path="$(read_env_value USER_BUILD_JOBS_PATH)"
   jobs_path="${jobs_path:-/var/lib/nexora-ai/android-build-jobs}"
   jobs_path="$(realpath -m -- "$jobs_path")"
   case "$jobs_path" in
@@ -243,6 +253,13 @@ compose_up_and_wait() {
 
 deploy_revision() {
   local pull_build="$1"
+  if compose_has_service mailer; then
+    if [[ "$pull_build" == "true" ]]; then
+      compose build --pull mailer || return $?
+    else
+      compose build mailer || return $?
+    fi
+  fi
   if [[ "$pull_build" == "true" ]]; then
     compose build --pull app || return $?
   else
@@ -273,6 +290,10 @@ show_deployment_diagnostics() {
   compose ps >&2 || true
   printf '\nÚltimas 120 líneas de la aplicación:\n' >&2
   compose logs --no-color --tail=120 app >&2 || true
+  if compose_has_service mailer; then
+    printf '\nÚltimas 120 líneas de Nexora Mail:\n' >&2
+    compose logs --no-color --tail=120 mailer >&2 || true
+  fi
   if grep -Eq '^ENABLE_USER_ANDROID_BUILDS=true$' "$ENV_FILE"; then
     printf '\nÚltimas 80 líneas del compilador efímero:\n' >&2
     compose logs --no-color --tail=80 android-build-worker >&2 || true
@@ -292,6 +313,76 @@ refresh_cli() {
     printf 'AVISO: ejecuta `sudo install -m 0755 %s %s` para actualizar el CLI.\n' \
       "$source" "$target" >&2
   fi
+}
+
+mail_dns() {
+  if ! compose_has_service mailer; then
+    printf 'Nexora Mail no existe en esta versión. Actualiza primero con `nexora update`.\n' >&2
+    exit 1
+  fi
+  local domain hostname selector
+  domain="$(read_env_value MAIL_DOMAIN)"
+  domain="${domain:-$(read_env_value PUBLIC_DOMAIN)}"
+  hostname="$(read_env_value MAIL_HOSTNAME)"
+  hostname="${hostname:-$domain}"
+  selector="$(read_env_value MAIL_DKIM_SELECTOR)"
+  selector="${selector:-nexora}"
+
+  printf '\n=== DNS recomendado para Nexora Mail ===\n'
+  printf 'A/AAAA: %s -> IP pública de tu VPS\n' "$hostname"
+  printf 'PTR/rDNS: IP pública de tu VPS -> %s\n' "$hostname"
+  printf 'SPF (%s): v=spf1 a:%s -all\n' "$domain" "$hostname"
+  printf 'DMARC (_dmarc.%s): v=DMARC1; p=quarantine; adkim=s; aspf=s\n' "$domain"
+  printf 'DKIM (%s._domainkey.%s):\n' "$selector" "$domain"
+  if compose ps --status running --services | grep -Fxq mailer; then
+    compose exec -T mailer sh -c \
+      "cat /var/lib/nexora-mail/${selector}.txt 2>/dev/null || true"
+  else
+    printf '  Inicia Nexora Mail para generar la clave: nexora restart\n'
+  fi
+  printf '\nNota: el proveedor de la VPS debe permitir TCP/25 de salida.\n'
+}
+
+mail_test() {
+  local recipient="${1:-}"
+  if [[ ! "$recipient" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]; then
+    printf 'Uso: nexora mail-test correo@dominio.com\n' >&2
+    exit 1
+  fi
+  if ! compose_has_service mailer; then
+    printf 'ERROR: Nexora Mail no existe en esta versión.\n' >&2
+    exit 1
+  fi
+  compose exec -T -e NEXORA_TEST_RECIPIENT="$recipient" mailer python3 - <<'PY'
+import hashlib
+import json
+import os
+import urllib.request
+
+recipient = os.environ["NEXORA_TEST_RECIPIENT"]
+secret = os.environ.get("AUTH_EMAIL_WEBHOOK_SECRET", "").strip()
+if not secret:
+    database_secret = os.environ.get("POSTGRES_PASSWORD", "").strip()
+    if not database_secret:
+        raise SystemExit("Falta POSTGRES_PASSWORD/AUTH_EMAIL_WEBHOOK_SECRET")
+    secret = hashlib.sha256(f"nexora-mail:{database_secret}".encode()).hexdigest()
+payload = json.dumps({
+    "type": "nexora.test",
+    "to": recipient,
+    "subject": "Prueba de Nexora Mail",
+    "text": "Nexora Mail está funcionando desde tu propia VPS.",
+    "html": "<h2>Nexora Mail</h2><p>El servicio de correo de tu VPS está funcionando.</p>",
+}).encode()
+request = urllib.request.Request(
+    "http://127.0.0.1:8025/send",
+    data=payload,
+    method="POST",
+    headers={"Content-Type": "application/json", "Authorization": f"Bearer {secret}"},
+)
+with urllib.request.urlopen(request, timeout=20) as response:
+    print(response.read().decode())
+PY
+  printf 'Nexora Mail aceptó el mensaje para %s. Revisa también spam y los logs si no llega.\n' "$recipient"
 }
 
 install_or_start() {
@@ -348,6 +439,9 @@ update() {
 
   refresh_cli
   printf 'Nexora AI actualizado correctamente a %s.\n' "$(git rev-parse --short HEAD)"
+  if compose_has_service mailer; then
+    printf 'Nexora Mail está activo. Usa `nexora mail-dns` para ver SPF/DKIM/DMARC.\n'
+  fi
 }
 
 rollback() {
@@ -367,6 +461,7 @@ rollback() {
   target_commit="$(git rev-parse --verify "${target}^{commit}")"
   git reset --hard "$target_commit"
   deploy_revision false
+  refresh_cli
   printf 'Rollback completado a %s.\n' "$(git rev-parse --short HEAD)"
 }
 
@@ -378,6 +473,8 @@ case "${1:-help}" in
   status) compose ps ;;
   logs) compose logs -f --tail="${2:-200}" ;;
   verify) VERIFY_PUBLIC_DOMAINS="${VERIFY_PUBLIC_DOMAINS:-true}" bash "$VERIFY_SCRIPT" ;;
+  mail-dns) mail_dns ;;
+  mail-test) mail_test "${2:-}" ;;
   stop) acquire_operation_lock; compose stop ;;
   restart)
     acquire_operation_lock
@@ -402,6 +499,8 @@ case "${1:-help}" in
       '  status           Muestra servicios' \
       '  logs [líneas]    Sigue los logs' \
       '  verify           Comprueba servicio y dominios' \
+      '  mail-dns         Muestra A/PTR/SPF/DKIM/DMARC recomendados' \
+      '  mail-test EMAIL  Envía una prueba con Nexora Mail' \
       '  android-release  Compila APK release en VPS AMD64' \
       '  user-builds-enable  Activa el compilador temporal aislado' \
       '  user-builds-disable Desactiva el compilador temporal' \

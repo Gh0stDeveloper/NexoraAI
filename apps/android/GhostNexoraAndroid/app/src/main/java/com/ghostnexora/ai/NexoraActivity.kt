@@ -1,5 +1,6 @@
 package com.ghostnexora.ai
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.animation.DecelerateInterpolator
@@ -16,7 +17,7 @@ class NexoraActivity : ComponentActivity() {
 
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(Color.rgb(13, 13, 13)),
+            navigationBarStyle = SystemBarStyle.dark(Color.rgb(9, 11, 16)),
         )
 
         splashScreen.setOnExitAnimationListener { provider ->
@@ -35,6 +36,13 @@ class NexoraActivity : ComponentActivity() {
                 .start()
         }
 
-        setContent { NexoraRoot() }
+        AuthCallbackBus.publish(intent?.data)
+        setContent { NexoraAuthenticatedRoot() }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        AuthCallbackBus.publish(intent.data)
     }
 }

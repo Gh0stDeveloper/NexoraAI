@@ -2,19 +2,39 @@ services:
   app:
     build: .
     env_file: .env.production
+    environment:
+      AUTH_EMAIL_WEBHOOK_URL: http://mailer:8025/send
     restart: unless-stopped
     stop_grace_period: 30s
     ports: ["127.0.0.1:3000:3000"]
     volumes:
       - ${NEXORA_RELEASE_DIR:-/opt/nexora-ai/releases}:/var/lib/nexora-ai/releases:ro
       - ${USER_BUILD_JOBS_PATH:-/var/lib/nexora-ai/android-build-jobs}:/var/lib/nexora-ai/android-build-jobs:ro
-    depends_on: [postgres, ollama]
+    depends_on:
+      postgres:
+        condition: service_started
+      ollama:
+        condition: service_started
+      mailer:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
       interval: 5s
       timeout: 5s
       retries: 24
       start_period: 15s
+  mailer:
+    image: nexora-ai-mailer:local
+    pull_policy: build
+    build:
+      context: ./mail-service
+    env_file: .env.production
+    restart: unless-stopped
+    expose: ["8025"]
+    volumes:
+      - mailer-keys:/var/lib/nexora-mail
+    security_opt:
+      - no-new-privileges:true
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
@@ -68,3 +88,4 @@ services:
 volumes:
   postgres:
   ollama:
+  mailer-keys:

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { readLatestAndroidRelease } from "@/lib/android-release";
 import { userAndroidBuildsEnabled } from "@/lib/android-builds";
 import { ensureDatabase } from "@/lib/db";
+import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export async function GET() {
     ok: true,
     app: "Nexora AI",
     status: "ready",
-    version: androidRelease?.version ?? process.env.APP_VERSION ?? "0.6.0",
+    version: androidRelease?.version ?? env.appVersion,
     provider: process.env.AI_PROVIDER ?? "ollama",
     siteUrl:
       process.env.NEXT_PUBLIC_SITE_URL ??
@@ -31,6 +32,9 @@ export async function GET() {
       "streaming-progress",
       "per-client-rate-limits",
       "projects-and-pinned-chats",
+      "chat-branches-and-response-variants",
+      "self-hosted-transactional-mail",
+      "explicit-social-account-linking",
       "optional-ephemeral-code-sandbox",
       "local-model-provider",
       "vps-docker-compose",

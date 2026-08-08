@@ -46,10 +46,12 @@ fi
 "${COMPOSE[@]}" config >/dev/null
 
 show_app_diagnostics() {
-  printf '\nEstado del contenedor de aplicación:\n' >&2
-  "${COMPOSE[@]}" ps app >&2 || true
-  printf '\nÚltimas 120 líneas del registro de aplicación:\n' >&2
+  printf '\nEstado de los servicios principales:\n' >&2
+  "${COMPOSE[@]}" ps app mailer postgres >&2 || true
+  printf '\nÚltimas 120 líneas de la aplicación:\n' >&2
   "${COMPOSE[@]}" logs --no-color --tail=120 app >&2 || true
+  printf '\nÚltimas 120 líneas de Nexora Mail:\n' >&2
+  "${COMPOSE[@]}" logs --no-color --tail=120 mailer >&2 || true
 }
 
 wait_for_command() {
@@ -101,6 +103,15 @@ android_build_worker_running() {
   "${COMPOSE[@]}" ps --status running --services android-build-worker |
     grep -Fxq android-build-worker
 }
+
+printf 'Comprobando Nexora Mail...\n'
+if ! wait_for_command 'Nexora Mail' "$VERIFY_STARTUP_TIMEOUT_SECONDS" \
+  "${COMPOSE[@]}" exec -T mailer python3 -c \
+    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8025/health', timeout=3).read()"; then
+  show_app_diagnostics
+  exit 1
+fi
+printf 'OK: Nexora Mail y SMTP interno.\n'
 
 printf 'Comprobando aplicación local...\n'
 if ! wait_for_http \

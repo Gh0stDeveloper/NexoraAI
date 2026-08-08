@@ -14,11 +14,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 
-internal val NexoraBackground = Color(0xFF0D0D0D)
-internal val NexoraSurface = Color(0xFF171717)
-internal val NexoraSurfaceElevated = Color(0xFF212121)
-internal val NexoraAccent = Color(0xFF10A37F)
-internal val NexoraMuted = Color(0xFFA3A3A3)
+internal val NexoraBackground = Color(0xFF090B10)
+internal val NexoraSurface = Color(0xFF12151C)
+internal val NexoraSurfaceElevated = Color(0xFF1A1E27)
+internal val NexoraAccent = Color(0xFF35D6AE)
+internal val NexoraAccentStrong = Color(0xFF10A37F)
+internal val NexoraViolet = Color(0xFF8B7CFF)
+internal val NexoraBlue = Color(0xFF69A7FF)
+internal val NexoraMuted = Color(0xFF98A0AE)
+internal val NexoraDivider = Color(0xFF252A35)
 
 @Composable
 internal fun NexoraMark(size: Dp) {
@@ -26,8 +30,14 @@ internal fun NexoraMark(size: Dp) {
         modifier = Modifier
             .size(size)
             .background(
-                Brush.linearGradient(listOf(Color(0xFF35D6AE), NexoraAccent)),
-                RoundedCornerShape(size * 0.28f),
+                Brush.linearGradient(
+                    listOf(
+                        Color(0xFF43E7BC),
+                        NexoraAccentStrong,
+                        Color(0xFF4B7CFF),
+                    ),
+                ),
+                RoundedCornerShape(size * 0.30f),
             ),
         contentAlignment = Alignment.Center,
     ) {

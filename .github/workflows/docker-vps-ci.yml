@@ -25,7 +25,10 @@ jobs:
         run: cp .env.vps.example .env.production
 
       - name: Validate shell scripts
-        run: find deploy/scripts -type f -name "*.sh" -print0 | xargs -0 -I{} bash -n {}
+        run: find deploy/scripts mail-service -type f -name "*.sh" -print0 | xargs -0 -I{} bash -n {}
+
+      - name: Validate Nexora Mail gateway syntax
+        run: python3 -m py_compile mail-service/gateway.py
 
       - name: Test transient VPS startup failures
         run: bash scripts/vps-healthcheck.test.sh
@@ -40,7 +43,7 @@ jobs:
         run: node scripts/ci-preflight.mjs
 
       - name: Validate Docker Compose VPS config
-        run: docker compose --profile sandbox -f docker-compose.vps.yml config
+        run: docker compose --env-file .env.production --profile sandbox -f docker-compose.vps.yml config
 
       - name: Validate Nginx production config
         run: |
@@ -50,6 +53,27 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t nexora-ai:${{ github.sha }} .
+
+      - name: Build Nexora Mail image
+        run: docker build -t nexora-ai-mailer:${{ github.sha }} mail-service
+
+      - name: Smoke test Nexora Mail runtime
+        run: |
+          docker compose --env-file .env.production -f docker-compose.vps.yml up -d --build mailer
+          for attempt in $(seq 1 40); do
+            if docker compose --env-file .env.production -f docker-compose.vps.yml \
+              exec -T mailer python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8025/health', timeout=3).read()"; then
+              break
+            fi
+            if [ "$attempt" -eq 40 ]; then
+              docker compose --env-file .env.production -f docker-compose.vps.yml logs --no-color mailer
+              exit 1
+            fi
+            sleep 2
+          done
+          docker compose --env-file .env.production -f docker-compose.vps.yml \
+            exec -T mailer sh -c 'test -s /var/lib/nexora-mail/nexora.private && test -s /var/lib/nexora-mail/nexora.txt'
+          docker compose --env-file .env.production -f docker-compose.vps.yml down --remove-orphans
 
       - name: Build sandbox runner image
         run: docker build -t nexora-ai-sandbox:${{ github.sha }} sandbox
