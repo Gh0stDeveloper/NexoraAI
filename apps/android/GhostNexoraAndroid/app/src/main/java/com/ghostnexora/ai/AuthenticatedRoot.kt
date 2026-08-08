@@ -3,37 +3,32 @@ package com.ghostnexora.ai
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -50,6 +45,7 @@ fun NexoraAuthenticatedRoot() {
     var session by remember { mutableStateOf(authStore.loadSession()) }
     var loading by remember { mutableStateOf(false) }
     var authError by remember { mutableStateOf<String?>(null) }
+    var accountFlowMessage by remember { mutableStateOf<String?>(null) }
     var accountSheetVisible by remember { mutableStateOf(false) }
     var pushJob by remember { mutableStateOf<Job?>(null) }
     val callback by AuthCallbackBus.callback.collectAsState()
@@ -118,10 +114,16 @@ fun NexoraAuthenticatedRoot() {
         val uri = callback ?: return@LaunchedEffect
         AuthCallbackBus.consume()
         val pending = authStore.loadPendingOAuth()
+        val providerLabel = pending?.provider?.replaceFirstChar { it.uppercase() } ?: "Proveedor"
         val error = uri.getQueryParameter("error")
         if (!error.isNullOrBlank()) {
             authStore.clearPendingOAuth()
-            authError = error
+            if (pending?.linking == true && session != null) {
+                accountFlowMessage = error
+                accountSheetVisible = true
+            } else {
+                authError = error
+            }
             loading = false
             return@LaunchedEffect
         }
@@ -134,7 +136,13 @@ fun NexoraAuthenticatedRoot() {
             System.currentTimeMillis() - pending.startedAt > OAUTH_MAX_AGE_MS
         ) {
             authStore.clearPendingOAuth()
-            authError = "La respuesta de inicio de sesión no es válida o expiró."
+            val message = "La respuesta de inicio de sesión no es válida o expiró."
+            if (pending?.linking == true && session != null) {
+                accountFlowMessage = message
+                accountSheetVisible = true
+            } else {
+                authError = message
+            }
             loading = false
             return@LaunchedEffect
         }
@@ -144,8 +152,19 @@ fun NexoraAuthenticatedRoot() {
             runCatching { AuthApi.exchangeOAuth(code, pending.verifier) }
         }
         authStore.clearPendingOAuth()
-        result.onSuccess(::finishLogin).onFailure {
-            authError = it.message ?: "No se pudo completar el inicio de sesión."
+        result.onSuccess { next ->
+            finishLogin(next)
+            if (pending.linking) {
+                accountFlowMessage = "$providerLabel vinculado correctamente."
+                accountSheetVisible = true
+            }
+        }.onFailure {
+            if (pending.linking && session != null) {
+                accountFlowMessage = it.message ?: "No se pudo vincular $providerLabel."
+                accountSheetVisible = true
+            } else {
+                authError = it.message ?: "No se pudo completar el inicio de sesión."
+            }
         }
         loading = false
     }
@@ -208,9 +227,7 @@ fun NexoraAuthenticatedRoot() {
                     authError = null
                     scope.launch {
                         val result = withContext(Dispatchers.IO) {
-                            runCatching {
-                                AuthApi.emailAuth(register, name, email, password)
-                            }
+                            runCatching { AuthApi.emailAuth(register, name, email, password) }
                         }
                         result.onSuccess(::finishLogin).onFailure {
                             authError = it.message ?: "No se pudo iniciar sesión."
@@ -266,12 +283,16 @@ fun NexoraAuthenticatedRoot() {
                     onDismissRequest = { accountSheetVisible = false },
                     containerColor = NexoraSurface,
                 ) {
-                    AccountCenter(
-                        authStore = authStore,
-                        initialUser = activeSession.user,
-                        onUserUpdated = ::updateVisibleUser,
-                        onLogout = ::logoutCurrentAccount,
-                    )
+                    key(activeSession.accessToken) {
+                        AdvancedAccountCenter(
+                            authStore = authStore,
+                            initialUser = activeSession.user,
+                            externalMessage = accountFlowMessage,
+                            onUserUpdated = ::updateVisibleUser,
+                            onExternalMessageConsumed = { accountFlowMessage = null },
+                            onLogout = ::logoutCurrentAccount,
+                        )
+                    }
                 }
             }
         }
@@ -291,26 +312,7 @@ private fun AccountFloatingChip(
         border = BorderStroke(1.dp, NexoraAccent.copy(alpha = 0.35f)),
         shadowElevation = 8.dp,
     ) {
-        Box(
-            modifier = Modifier
-                .size(43.dp)
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            NexoraAccent.copy(alpha = 0.28f),
-                            NexoraViolet.copy(alpha = 0.22f),
-                        ),
-                    ),
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                user.name.trim().firstOrNull()?.uppercase() ?: "N",
-                color = Color.White,
-                fontWeight = FontWeight.Black,
-                fontSize = 15.sp,
-            )
-        }
+        NexoraUserAvatar(user = user, size = 43.dp)
     }
 }
 
