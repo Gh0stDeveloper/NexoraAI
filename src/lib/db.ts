@@ -8,6 +8,83 @@ const globalDatabase = globalThis as typeof globalThis & {
 const schemaSql = String.raw`
 create extension if not exists vector;
 
+create table if not exists app_users (
+  id uuid primary key,
+  name text not null,
+  email text,
+  image_url text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists app_users_email_unique_idx
+  on app_users(lower(email))
+  where email is not null;
+
+create table if not exists app_auth_accounts (
+  id uuid primary key,
+  user_id uuid not null references app_users(id) on delete cascade,
+  provider text not null check (provider in ('google', 'facebook', 'discord')),
+  provider_account_id text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(provider, provider_account_id)
+);
+create index if not exists app_auth_accounts_user_idx
+  on app_auth_accounts(user_id);
+
+create table if not exists app_password_credentials (
+  user_id uuid primary key references app_users(id) on delete cascade,
+  password_salt text not null,
+  password_hash text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists app_auth_sessions (
+  id uuid primary key,
+  user_id uuid not null references app_users(id) on delete cascade,
+  access_token_hash char(64) not null unique,
+  refresh_token_hash char(64) not null unique,
+  access_expires_at timestamptz not null,
+  refresh_expires_at timestamptz not null,
+  revoked_at timestamptz,
+  created_at timestamptz not null default now(),
+  last_used_at timestamptz not null default now()
+);
+create index if not exists app_auth_sessions_user_idx
+  on app_auth_sessions(user_id, last_used_at desc);
+create index if not exists app_auth_sessions_expiry_idx
+  on app_auth_sessions(refresh_expires_at);
+
+create table if not exists mobile_oauth_states (
+  state_hash char(64) primary key,
+  provider text not null check (provider in ('google', 'facebook', 'discord')),
+  redirect_uri text not null,
+  client_state text not null,
+  code_challenge varchar(128) not null,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists mobile_oauth_states_expiry_idx
+  on mobile_oauth_states(expires_at);
+
+create table if not exists mobile_auth_codes (
+  code_hash char(64) primary key,
+  user_id uuid not null references app_users(id) on delete cascade,
+  code_challenge varchar(128) not null,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists mobile_auth_codes_expiry_idx
+  on mobile_auth_codes(expires_at);
+
+create table if not exists mobile_user_chat_state (
+  user_id uuid primary key references app_users(id) on delete cascade,
+  revision bigint not null default 1,
+  payload jsonb not null default '{"sessions":[],"projects":[]}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists chat_jobs (
   id uuid primary key,
   access_token_hash char(64) not null,
