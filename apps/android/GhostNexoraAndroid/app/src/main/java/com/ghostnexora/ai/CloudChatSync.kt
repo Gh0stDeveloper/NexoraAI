@@ -4,6 +4,7 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** Synchronizes the mobile chat history with the authenticated Nexora account. */
 class CloudChatSync(context: Context) {
     private val preferences = context.getSharedPreferences(
         "nexora_chat_history",
