@@ -37,7 +37,7 @@ class NexoraActivity : ComponentActivity() {
         }
 
         AuthCallbackBus.publish(intent?.data)
-        setContent { NexoraRoot() }
+        setContent { NexoraAuthenticatedRoot() }
     }
 
     override fun onNewIntent(intent: Intent) {
