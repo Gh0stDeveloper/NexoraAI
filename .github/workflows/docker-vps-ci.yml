@@ -25,7 +25,10 @@ jobs:
         run: cp .env.vps.example .env.production
 
       - name: Validate shell scripts
-        run: find deploy/scripts -type f -name "*.sh" -print0 | xargs -0 -I{} bash -n {}
+        run: find deploy/scripts mail-service -type f -name "*.sh" -print0 | xargs -0 -I{} bash -n {}
+
+      - name: Validate Nexora Mail gateway syntax
+        run: python3 -m py_compile mail-service/gateway.py
 
       - name: Test transient VPS startup failures
         run: bash scripts/vps-healthcheck.test.sh
@@ -50,6 +53,9 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t nexora-ai:${{ github.sha }} .
+
+      - name: Build Nexora Mail image
+        run: docker build -t nexora-ai-mailer:${{ github.sha }} mail-service
 
       - name: Build sandbox runner image
         run: docker build -t nexora-ai-sandbox:${{ github.sha }} sandbox
