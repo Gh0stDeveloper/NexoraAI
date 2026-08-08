@@ -14,6 +14,7 @@ PORT = 8025
 SMTP_HOST = "127.0.0.1"
 SMTP_PORT = 25
 MAX_BODY_BYTES = 96 * 1024
+MIN_SECRET_LENGTH = 32
 EMAIL_RE = re.compile(r"^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$")
 
 
@@ -30,7 +31,7 @@ def required(name: str) -> str:
 
 def webhook_secret() -> str:
     explicit = env("AUTH_EMAIL_WEBHOOK_SECRET")
-    if explicit:
+    if len(explicit) >= MIN_SECRET_LENGTH:
         return explicit
     database_secret = required("POSTGRES_PASSWORD")
     return hashlib.sha256(f"nexora-mail:{database_secret}".encode("utf-8")).hexdigest()
