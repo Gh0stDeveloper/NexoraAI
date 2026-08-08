@@ -1,6 +1,7 @@
 package com.ghostnexora.ai
 
 import android.net.Uri
+import android.os.Build
 import android.util.Base64
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -63,6 +64,28 @@ object AuthApi {
         return response.getJSONObject("session").toSession()
     }
 
+    fun requestPasswordReset(email: String) {
+        executeJson(
+            method = "POST",
+            path = "/api/auth/mobile/password/reset",
+            body = JSONObject()
+                .put("action", "request")
+                .put("email", email),
+        )
+    }
+
+    fun confirmPasswordReset(email: String, code: String, password: String) {
+        executeJson(
+            method = "POST",
+            path = "/api/auth/mobile/password/reset",
+            body = JSONObject()
+                .put("action", "confirm")
+                .put("email", email)
+                .put("code", code)
+                .put("password", password),
+        )
+    }
+
     fun ensureFreshSession(store: AuthStore): NexoraAuthSession? {
         val current = store.loadSession() ?: return null
         val now = System.currentTimeMillis()
@@ -88,6 +111,107 @@ object AuthApi {
             bearerToken = session.accessToken,
         )
         return response.getJSONObject("user").toUser()
+    }
+
+    fun getAccountOverview(store: AuthStore): NexoraAccountOverview {
+        val session = ensureFreshSession(store)
+            ?: throw AuthApiException("Debes iniciar sesión.", 401)
+        val account = executeJson(
+            method = "GET",
+            path = "/api/auth/mobile/account",
+            bearerToken = session.accessToken,
+        ).getJSONObject("account")
+        val userObject = account.getJSONObject("user")
+        val providersJson = account.optJSONArray("providers")
+        val providers = buildList {
+            if (providersJson != null) {
+                for (index in 0 until providersJson.length()) {
+                    providersJson.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+                }
+            }
+        }
+        val sessionsJson = account.optJSONArray("sessions")
+        val sessions = buildList {
+            if (sessionsJson != null) {
+                for (index in 0 until sessionsJson.length()) {
+                    val item = sessionsJson.optJSONObject(index) ?: continue
+                    add(
+                        NexoraAccountSession(
+                            id = item.optString("id"),
+                            deviceName = item.optString("deviceName", "Android"),
+                            createdAt = item.optString("createdAt"),
+                            lastUsedAt = item.optString("lastUsedAt"),
+                            current = item.optBoolean("current", false),
+                        ),
+                    )
+                }
+            }
+        }
+        return NexoraAccountOverview(
+            user = userObject.toUser(),
+            emailVerified = userObject.optBoolean("emailVerified", false),
+            providers = providers,
+            hasPassword = account.optBoolean("hasPassword", false),
+            sessions = sessions,
+        )
+    }
+
+    fun updateAccountName(store: AuthStore, name: String): NexoraUser {
+        val session = ensureFreshSession(store)
+            ?: throw AuthApiException("Debes iniciar sesión.", 401)
+        val response = executeJson(
+            method = "PATCH",
+            path = "/api/auth/mobile/account",
+            bearerToken = session.accessToken,
+            body = JSONObject().put("name", name),
+        )
+        return response.getJSONObject("user").toUser()
+    }
+
+    fun requestEmailVerification(store: AuthStore) {
+        val session = ensureFreshSession(store)
+            ?: throw AuthApiException("Debes iniciar sesión.", 401)
+        executeJson(
+            method = "POST",
+            path = "/api/auth/mobile/account/verify",
+            bearerToken = session.accessToken,
+            body = JSONObject().put("action", "request"),
+        )
+    }
+
+    fun confirmEmailVerification(store: AuthStore, code: String) {
+        val session = ensureFreshSession(store)
+            ?: throw AuthApiException("Debes iniciar sesión.", 401)
+        executeJson(
+            method = "POST",
+            path = "/api/auth/mobile/account/verify",
+            bearerToken = session.accessToken,
+            body = JSONObject()
+                .put("action", "confirm")
+                .put("code", code),
+        )
+    }
+
+    fun revokeOtherSessions(store: AuthStore) {
+        val session = ensureFreshSession(store)
+            ?: throw AuthApiException("Debes iniciar sesión.", 401)
+        executeJson(
+            method = "DELETE",
+            path = "/api/auth/mobile/account/sessions",
+            bearerToken = session.accessToken,
+            body = JSONObject().put("others", true),
+        )
+    }
+
+    fun revokeSession(store: AuthStore, sessionId: String) {
+        val session = ensureFreshSession(store)
+            ?: throw AuthApiException("Debes iniciar sesión.", 401)
+        executeJson(
+            method = "DELETE",
+            path = "/api/auth/mobile/account/sessions",
+            bearerToken = session.accessToken,
+            body = JSONObject().put("sessionId", sessionId),
+        )
     }
 
     fun logout(store: AuthStore) {
@@ -140,7 +264,7 @@ object AuthApi {
         id = getString("id"),
         name = optString("name", "Usuario Nexora"),
         email = nullableString("email"),
-        imageUrl = nullableString("image"),
+        imageUrl = nullableString("image") ?: nullableString("imageUrl"),
     )
 
     private fun JSONObject.nullableString(key: String): String? =
@@ -162,6 +286,10 @@ object AuthApi {
                 setRequestProperty("Accept", "application/json")
                 setRequestProperty(NativeBridge.clientHeaderName(), "android")
                 setRequestProperty(NativeBridge.versionHeaderName(), BuildConfig.VERSION_NAME)
+                setRequestProperty(
+                    "X-Nexora-Device",
+                    "${Build.MANUFACTURER} ${Build.MODEL}".trim().take(100),
+                )
                 bearerToken?.let { setRequestProperty("Authorization", "Bearer $it") }
                 if (body != null) {
                     doOutput = true
